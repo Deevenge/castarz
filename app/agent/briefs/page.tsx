@@ -240,6 +240,7 @@ function BriefCard({ brief, applications, onClose }: { brief: AgentBrief; applic
 
 function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: { brief: AgentBrief; applications: Application[]; senderUid: string; onClose: () => void; onDone: (message: string) => void }) {
   const booked = applications.filter((application) => application.status === "booked");
+  const remaining = Math.max((brief.talentNeeded || 0) - booked.length, 0);
   const [message, setMessage] = useState(`You are booked for ${brief.title}. Please join the WhatsApp group for shoot communication.`);
   const [whatsappLink, setWhatsappLink] = useState("");
   const [working, setWorking] = useState(false);
@@ -281,19 +282,36 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
           <div>
             <p className="text-sm font-bold tracking-[0.16em] text-brand-blue">CLOSE BRIEF</p>
             <h2 className="mt-1 text-2xl font-bold text-brand-navy">{brief.title}</h2>
-            <p className="mt-2 text-sm text-slate-600">{booked.length} booked actor{booked.length === 1 ? "" : "s"} will receive this update.</p>
+            <p className="mt-2 text-sm text-slate-600">Send one final update to the confirmed cast and move this brief out of the live feed.</p>
           </div>
           <button type="button" onClick={onClose} className="flex size-10 items-center justify-center rounded-full hover:bg-slate-100" aria-label="Close dialog"><X className="size-5" /></button>
+        </div>
+        <div className="mt-6 grid grid-cols-3 overflow-hidden rounded-2xl border border-brand-silver/70 bg-brand-ice">
+          <div className="border-r border-brand-silver/70 p-4">
+            <p className="text-2xl font-bold text-brand-navy">{booked.length}</p>
+            <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Booked</p>
+          </div>
+          <div className="border-r border-brand-silver/70 p-4">
+            <p className="text-2xl font-bold text-brand-navy">{brief.talentNeeded || "Open"}</p>
+            <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Needed</p>
+          </div>
+          <div className="p-4">
+            <p className="text-2xl font-bold text-brand-navy">{remaining}</p>
+            <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Remaining</p>
+          </div>
         </div>
         <form onSubmit={closeBrief} className="mt-6 space-y-5">
           <label className="block">
             <span className="mb-2 block text-sm font-bold text-slate-700">Message to booked actors</span>
             <textarea required rows={5} value={message} onChange={(event) => setMessage(event.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
           </label>
-          <label className="block">
-            <span className="mb-2 block text-sm font-bold text-slate-700">WhatsApp group link</span>
-            <input type="url" value={whatsappLink} onChange={(event) => setWhatsappLink(event.target.value)} placeholder="https://chat.whatsapp.com/..." className="min-h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
-          </label>
+          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+            <label className="block">
+              <span className="mb-2 flex items-center gap-2 text-sm font-bold text-emerald-900"><MessageCircle className="size-4" />WhatsApp group link</span>
+              <input required type="url" value={whatsappLink} onChange={(event) => setWhatsappLink(event.target.value)} placeholder="https://chat.whatsapp.com/..." className="min-h-12 w-full rounded-xl border border-emerald-200 bg-white px-4 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" />
+            </label>
+            <p className="mt-2 text-xs font-semibold text-emerald-700">This link appears with the message in each booked actor notification and on their booked application card.</p>
+          </div>
           {error && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</p>}
           <div className="grid grid-cols-2 gap-3">
             <button type="button" onClick={onClose} className="min-h-12 rounded-xl border border-slate-300 font-bold text-slate-600 hover:bg-slate-50">Cancel</button>

@@ -45,8 +45,10 @@ function timeLabel(ms: number) {
 
 export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; title: string; empty: string }) {
   const { items, loading } = useInbox();
+  const [tab, setTab] = useState<"inbox" | "notifications">("notifications");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = items.find((item) => item.id === selectedId) ?? items[0] ?? null;
+  const unread = items.filter((item) => !item.read).length;
 
   async function openItem(item: InboxItem) {
     setSelectedId(item.id);
@@ -69,17 +71,33 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
         <h1 className="mt-1 text-3xl font-bold tracking-tight">{title}</h1>
         <p className="mt-2 text-slate-600">Live updates from connections, applications, and bookings.</p>
       </header>
-      {!items.length ? (
+      <div className="mb-5 grid grid-cols-2 rounded-2xl bg-white p-1.5 shadow-sm ring-1 ring-brand-silver/70">
+        <button type="button" onClick={() => setTab("inbox")} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${tab === "inbox" ? "bg-brand-navy text-white shadow-sm" : "text-slate-500 hover:bg-brand-ice"}`}>
+          <MessageCircle className="size-4" />Inbox
+        </button>
+        <button type="button" onClick={() => setTab("notifications")} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${tab === "notifications" ? "bg-brand-navy text-white shadow-sm" : "text-slate-500 hover:bg-brand-ice"}`}>
+          <span className="relative"><Bell className="size-4" />{unread > 0 && <span className="absolute -right-2 -top-2 min-w-4 rounded-full bg-brand-cyan px-1 text-[10px] leading-4 text-brand-navy">{unread > 9 ? "9+" : unread}</span>}</span>
+          Notifications
+        </button>
+      </div>
+
+      {tab === "inbox" ? (
+        <div className="rounded-3xl border border-brand-silver/70 bg-white p-8 text-center shadow-sm sm:p-10">
+          <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-brand-ice text-brand-blue"><MessageCircle className="size-7" /></div>
+          <h2 className="mt-5 text-xl font-bold text-brand-navy">Direct messages are coming</h2>
+          <p className="mx-auto mt-2 max-w-md text-slate-600">This space is reserved for future agency and actor conversations.</p>
+        </div>
+      ) : !items.length ? (
         <div className="rounded-3xl border-2 border-dashed border-brand-silver bg-white p-10 text-center">
-          <MessageCircle className="mx-auto size-9 text-brand-blue" />
-          <h2 className="mt-4 text-xl font-bold">You are all caught up</h2>
+          <Bell className="mx-auto size-9 text-brand-blue" />
+          <h2 className="mt-4 text-xl font-bold">No notifications yet</h2>
           <p className="mt-2 text-slate-600">{empty}</p>
         </div>
       ) : (
         <div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-brand-silver/70 md:grid md:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.3fr)]">
           <section className="border-b border-brand-silver/60 md:border-b-0 md:border-r">
             <div className="border-b border-brand-silver/60 px-5 py-4">
-              <h2 className="font-bold">Inbox</h2>
+              <h2 className="font-bold">Notifications</h2>
             </div>
             {items.map((item) => {
               const Icon = icon[item.type];
@@ -122,9 +140,13 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
               </div>
               {selected.href && (
                 selected.href.startsWith("http") ? (
-                  <a href={selected.href} target="_blank" rel="noreferrer" className="mt-6 inline-flex min-h-11 w-fit items-center rounded-xl bg-brand-navy px-4 text-sm font-bold text-white hover:bg-brand-blue">
-                    Open WhatsApp group
-                  </a>
+                  <div className="mt-6 max-w-lg rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                    <p className="text-sm font-bold text-emerald-800">Booked cast communication</p>
+                    <a href={selected.href} target="_blank" rel="noreferrer" className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white hover:bg-emerald-700">
+                      <MessageCircle className="size-4" />Join WhatsApp group
+                    </a>
+                    <p className="mt-2 break-all text-xs text-emerald-700">{selected.href}</p>
+                  </div>
                 ) : (
                   <Link href={selected.href} className="mt-6 inline-flex min-h-11 w-fit items-center rounded-xl bg-brand-navy px-4 text-sm font-bold text-white hover:bg-brand-blue">
                     Open related workspace
