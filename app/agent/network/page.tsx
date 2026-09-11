@@ -23,6 +23,7 @@ export default function NetworkPage() {
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [search, setSearch] = useState("");
   const [feed, setFeed] = useState<"discover" | "mine">("discover");
+  const [panel, setPanel] = useState<"requests" | "approved" | "">("");
   const [agencyName, setAgencyName] = useState("");
   const [working, setWorking] = useState("");
   const [notice, setNotice] = useState("");
@@ -102,8 +103,15 @@ export default function NetworkPage() {
           <h1 className="mt-1 text-3xl font-bold tracking-tight">Discover the actors behind the headshots.</h1>
           <p className="mt-2 max-w-2xl text-slate-600">Daily posts, fresh looks, showreel moments, and a search bar when you need to find someone specific.</p>
         </div>
-        <div className="rounded-2xl bg-white px-4 py-3 text-sm font-bold text-brand-navy shadow-sm ring-1 ring-brand-silver/70">
-          {approved.length} in network
+        <div className="flex items-center gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-brand-silver/70">
+          <button type="button" onClick={() => setPanel(panel === "requests" ? "" : "requests")} className={`relative flex size-11 items-center justify-center rounded-xl ${panel === "requests" ? "bg-brand-navy text-white" : "text-brand-navy hover:bg-brand-ice"}`} aria-label="Connection requests">
+            <UserPlus className="size-5" />
+            {pending.length > 0 && <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-brand-cyan px-1 text-[11px] font-black leading-5 text-brand-navy">{pending.length}</span>}
+          </button>
+          <button type="button" onClick={() => setPanel(panel === "approved" ? "" : "approved")} className={`relative flex size-11 items-center justify-center rounded-xl ${panel === "approved" ? "bg-brand-navy text-white" : "text-brand-navy hover:bg-brand-ice"}`} aria-label="Approved talent">
+            <UsersRound className="size-5" />
+            {approved.length > 0 && <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-brand-ice px-1 text-[11px] font-black leading-5 text-brand-navy ring-1 ring-brand-silver">{approved.length}</span>}
+          </button>
         </div>
       </header>
 
@@ -140,57 +148,41 @@ export default function NetworkPage() {
             <button onClick={() => setFeed("discover")} className={`flex min-h-11 items-center justify-center gap-2 rounded-lg text-sm font-bold ${feed === "discover" ? "bg-brand-navy text-white" : "text-slate-500"}`}><Grid3X3 className="size-4" />Discover</button>
             <button onClick={() => setFeed("mine")} className={`flex min-h-11 items-center justify-center gap-2 rounded-lg text-sm font-bold ${feed === "mine" ? "bg-brand-navy text-white" : "text-slate-500"}`}><ShieldCheck className="size-4" />My talent</button>
           </div>
+          {panel && (
+            <section className="mb-5 rounded-2xl bg-white p-5 shadow-xl shadow-brand-navy/10 ring-1 ring-brand-silver/70">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-bold text-brand-navy">{panel === "requests" ? "Connection requests" : "Approved talent"}</h2>
+                  <p className="text-sm text-slate-600">{panel === "requests" ? "Review actors asking to join your network." : "Your connected actor network."}</p>
+                </div>
+                <button type="button" onClick={() => setPanel("")} className="flex size-9 items-center justify-center rounded-full hover:bg-brand-ice" aria-label="Close panel"><X className="size-4" /></button>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {panel === "requests" && (pending.length ? pending.map((connection) => (
+                  <ActorRow
+                    key={connection.id}
+                    actor={actors[connection.actorUid]}
+                    actions={(
+                      <>
+                        <button disabled={working === connection.id} onClick={() => decide(connection, "declined")} className="flex size-10 items-center justify-center rounded-xl border border-slate-300 text-slate-500 hover:bg-red-50 hover:text-red-600" aria-label="Decline"><X className="size-4" /></button>
+                        <button disabled={working === connection.id} onClick={() => decide(connection, "approved")} className="flex min-h-10 items-center gap-2 rounded-xl bg-brand-blue px-4 text-sm font-bold text-white hover:bg-brand-navy">{working === connection.id ? <LoaderCircle className="size-4 animate-spin" /> : <Check className="size-4" />}Approve</button>
+                      </>
+                    )}
+                  />
+                )) : <p className="rounded-xl bg-brand-ice p-4 text-sm text-slate-600">No requests waiting yet.</p>)}
+                {panel === "approved" && (approved.length ? approved.map((connection) => <ActorRow key={connection.id} actor={actors[connection.actorUid]} />) : <p className="rounded-xl bg-brand-ice p-4 text-sm text-slate-600">Approved actors will appear here.</p>)}
+              </div>
+            </section>
+          )}
           <SocialPostGrid
             posts={visiblePosts}
+            currentUserUid={user?.uid ?? ""}
+            currentUserName={agencyName || profile?.email || "CASTARZ Agency"}
+            allowManage
             emptyTitle={feed === "discover" ? "No actor posts yet" : "Your talent has not posted yet"}
             emptyCopy={feed === "discover" ? "As actors share photos, TV appearances, set days, and text updates, they will appear here instead of as a plain list." : "Approved actors with social updates will appear here. You can still find everyone through search."}
           />
         </section>
-      </section>
-
-      <section className="mt-7 grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-brand-silver/70 sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-bold">Connection requests</h2>
-              <p className="mt-1 text-sm text-slate-600">Approve actors into your private talent network after reviewing their profile.</p>
-            </div>
-            <span className="rounded-full bg-brand-ice px-3 py-1 text-sm font-bold text-brand-navy">{pending.length} pending</span>
-          </div>
-          <div className="mt-6 space-y-3">
-            {pending.length ? pending.map((connection) => (
-              <ActorRow
-                key={connection.id}
-                actor={actors[connection.actorUid]}
-                actions={(
-                  <>
-                    <button disabled={working === connection.id} onClick={() => decide(connection, "declined")} className="flex size-10 items-center justify-center rounded-xl border border-slate-300 text-slate-500 hover:bg-red-50 hover:text-red-600" aria-label="Decline"><X className="size-4" /></button>
-                    <button disabled={working === connection.id} onClick={() => decide(connection, "approved")} className="flex min-h-10 items-center gap-2 rounded-xl bg-brand-blue px-4 text-sm font-bold text-white hover:bg-brand-navy">{working === connection.id ? <LoaderCircle className="size-4 animate-spin" /> : <Check className="size-4" />}Approve</button>
-                  </>
-                )}
-              />
-            )) : (
-              <div className="flex min-h-36 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-brand-silver bg-brand-ice/50 p-6 text-center">
-                <UserPlus className="size-8 text-brand-blue" />
-                <p className="mt-3 font-bold">No requests waiting yet</p>
-                <p className="mt-1 text-sm text-slate-600">Actors can request a connection from your agency profile.</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-brand-silver/70 sm:p-6">
-          <div className="flex items-center gap-3">
-            <div className="flex size-11 items-center justify-center rounded-2xl bg-brand-ice text-brand-blue"><UsersRound className="size-5" /></div>
-            <div>
-              <h2 className="font-bold">Approved talent</h2>
-              <p className="text-sm text-slate-600">{approved.length} actor{approved.length === 1 ? "" : "s"} connected</p>
-            </div>
-          </div>
-          <div className="mt-5 space-y-3">
-            {approved.length ? approved.slice(0, 6).map((connection) => <ActorRow key={connection.id} actor={actors[connection.actorUid]} />) : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Approved actors will appear here with their live profile and availability.</p>}
-          </div>
-        </div>
       </section>
     </div>
   );

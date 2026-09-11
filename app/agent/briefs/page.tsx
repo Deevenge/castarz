@@ -390,7 +390,7 @@ function DeleteBriefDialog({ brief, applications, onClose, onDone }: { brief: Ag
     setWorking(true);
     setError("");
     try {
-      const bookingSnapshot = await getDocs(query(collection(db, "bookings"), where("briefId", "==", brief.id)));
+      const bookingSnapshot = await getDocs(query(collection(db, "bookings"), where("agencyId", "==", brief.agencyId), where("briefId", "==", brief.id)));
       await Promise.all([
         ...applications.map((application) => deleteDoc(doc(db, "applications", application.id))),
         ...bookingSnapshot.docs.map((booking) => deleteDoc(doc(db, "bookings", booking.id))),

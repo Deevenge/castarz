@@ -4,6 +4,7 @@ import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { CheckCircle2, LoaderCircle, Save } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 import { SpecChips } from "@/components/ProfileChrome";
+import { MyPostsSection } from "@/components/MyPostsSection";
 import { useAuth } from "@/context/AuthContext";
 import { auth, db } from "@/lib/firebase";
 import { emptyActorProfile, normalizeActorProfile, type ActorProfile, type AvailabilityStatus } from "@/lib/actor-profile";
@@ -132,6 +133,7 @@ export default function ActorProfilePage() {
           </div>
         </form>
       )}
+      {user && <MyPostsSection userUid={user.uid} />}
     </div>
   );
 }

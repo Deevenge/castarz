@@ -148,7 +148,7 @@ export default function ActorDashboardPage() {
           </div>
 
           {tab === "spotlight" ? (
-            <SocialPostGrid posts={agencyPosts} emptyTitle="No agency posts yet" emptyCopy="When agencies share cast wins, TV moments, behind-the-scenes work, or video links, they will appear here." />
+            <SocialPostGrid posts={agencyPosts} currentUserUid={user?.uid ?? ""} currentUserName={actorName || "CASTARZ Actor"} allowManage emptyTitle="No agency posts yet" emptyCopy="When agencies share cast wins, TV moments, behind-the-scenes work, or video links, they will appear here." />
           ) : (
             <div className="space-y-5">
               <div className="flex items-center justify-between">

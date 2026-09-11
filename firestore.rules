@@ -137,6 +137,13 @@ service cloud.firestore {
       function ownsPost() {
         return signedIn() && resource.data.authorUid == request.auth.uid;
       }
+      function parentPost() {
+        return get(/databases/$(database)/documents/posts/$(postId)).data;
+      }
+      function publicParentPost() {
+        return signedIn()
+          && parentPost().visibility == 'public';
+      }
       function validPostAuthor() {
         return request.resource.data.authorUid == request.auth.uid
           && request.resource.data.authorRole in ['actor', 'agent']
@@ -162,8 +169,7 @@ service cloud.firestore {
       }
 
       allow read: if signedIn()
-        && resource.data.visibility == 'public'
-        && resource.data.authorRole in ['actor', 'agent'];
+        && resource.data.visibility == 'public';
       allow create: if signedIn()
         && validPostAuthor()
         && validPostShape();
@@ -174,6 +180,27 @@ service cloud.firestore {
         && request.resource.data.agencyId == resource.data.agencyId
         && validPostShape();
       allow delete: if ownsPost();
+
+      match /likes/{uid} {
+        allow read: if publicParentPost();
+        allow create: if publicParentPost()
+          && uid == request.auth.uid
+          && request.resource.data.likerUid == request.auth.uid;
+        allow delete: if signedIn()
+          && (uid == request.auth.uid || parentPost().authorUid == request.auth.uid);
+      }
+
+      match /comments/{commentId} {
+        allow read: if publicParentPost();
+        allow create: if publicParentPost()
+          && request.resource.data.commenterUid == request.auth.uid
+          && request.resource.data.commenterName is string
+          && request.resource.data.body is string
+          && request.resource.data.body.size() > 0
+          && request.resource.data.body.size() <= 240;
+        allow delete: if signedIn()
+          && (resource.data.commenterUid == request.auth.uid || parentPost().authorUid == request.auth.uid);
+      }
     }
 
     // Production guest links: anyone with the ID can view that shortlist only.
