@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { Bell, BriefcaseBusiness, ClipboardCheck, LayoutDashboard, LoaderCircle, LogOut, Settings, UsersRound } from "lucide-react";
+import { MobileTopBar } from "@/components/MobileTopBar";
 import { useAuth } from "@/context/AuthContext";
 import { useInbox } from "@/hooks/useInbox";
 import { db } from "@/lib/firebase";
@@ -18,6 +19,11 @@ const links = [
   { href: "/agent/applications", label: "Applications", icon: ClipboardCheck },
   { href: "/agent/profile", label: "Agency", icon: Settings },
 ];
+
+function agentNavActive(pathname: string, href: string) {
+  if (href === "/agent/network") return pathname.startsWith(href) || pathname.startsWith("/agent/talent");
+  return pathname === href;
+}
 
 function UnreadDot({ count }: { count: number }) {
   if (!count) return null;
@@ -64,7 +70,7 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
         </div>
         <nav className="mt-7 space-y-2">
           {links.map(({ href, label, icon: Icon }) => (
-            <Link key={href} href={href} className={`flex min-h-12 items-center gap-3 rounded-xl px-4 text-sm font-semibold ${pathname === href ? "bg-brand-blue text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}>
+            <Link key={href} href={href} className={`flex min-h-12 items-center gap-3 rounded-xl px-4 text-sm font-semibold ${agentNavActive(pathname, href) ? "bg-brand-blue text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}>
               <Icon className="size-5" />{label}
             </Link>
           ))}
@@ -78,23 +84,20 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
         </button>
       </aside>
 
-      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-brand-silver/70 bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
-        <Image src={logo} alt="CASTARZ" className="h-8 w-auto" />
-        <div className="flex items-center gap-2">
+      <MobileTopBar
+        extra={
           <Link href="/agent/inbox" className="relative flex size-11 items-center justify-center rounded-xl bg-brand-ice text-brand-navy" aria-label="Inbox">
             <Bell className="size-5" />
             <UnreadDot count={unreadCount} />
           </Link>
-          <button type="button" onClick={() => void handleSignOut()} className="flex min-h-11 items-center gap-2 rounded-xl bg-brand-navy px-3 text-sm font-bold text-white">
-            <LogOut className="size-4" />Log out
-          </button>
-        </div>
-      </header>
+        }
+        onSignOut={() => void handleSignOut()}
+      />
 
-      <main className="min-h-dvh px-4 py-6 pb-24 sm:px-7 lg:ml-72 lg:px-10 lg:py-10 lg:pb-10">{children}</main>
-      <nav className="fixed inset-x-0 bottom-0 z-30 flex h-[76px] items-center justify-around border-t border-brand-silver/70 bg-white/95 px-1 lg:hidden">
+      <main className="min-h-dvh px-4 py-6 pb-28 sm:px-7 lg:ml-72 lg:px-10 lg:py-10 lg:pb-10">{children}</main>
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex h-[76px] items-center justify-around border-t border-brand-silver/70 bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] lg:hidden">
         {links.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href} className={`flex min-h-14 min-w-14 flex-col items-center justify-center gap-1 text-[10px] font-bold ${pathname === href ? "text-brand-blue" : "text-slate-500"}`}>
+          <Link key={href} href={href} className={`flex min-h-14 min-w-14 flex-col items-center justify-center gap-1 text-[10px] font-bold ${agentNavActive(pathname, href) ? "text-brand-blue" : "text-slate-500"}`}>
             <Icon className="size-5" /><span>{label}</span>
           </Link>
         ))}

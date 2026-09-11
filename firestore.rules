@@ -43,11 +43,10 @@ service cloud.firestore {
         && unchanged('uid');
     }
 
-    // Actors own their profiles. Listing the collection is denied so agencies cannot browse the talent pool.
-    // An agent can get a single profile by uid (from an application or connection they already have).
+    // Actors own their profiles. Agents can search and open talent profiles.
     match /actors/{uid} {
       allow get: if isOwner(uid) || isAgent();
-      allow list: if false;
+      allow list: if isAgent();
       allow write: if isOwner(uid);
     }
 
@@ -62,7 +61,7 @@ service cloud.firestore {
         return isAgent() && resource.data.agencyId == request.auth.uid;
       }
       function publishedPublic() {
-        return isActor()
+        return signedIn()
           && resource.data.status == 'published'
           && resource.data.visibility == 'public';
       }

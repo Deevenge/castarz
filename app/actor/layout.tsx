@@ -5,7 +5,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
-import { BriefcaseBusiness, House, ImagePlus, LoaderCircle, LogOut, MessageCircle, UserRound } from "lucide-react";
+import { BriefcaseBusiness, House, LoaderCircle, LogOut, MessageCircle, UserRound, UsersRound } from "lucide-react";
+import { MobileTopBar } from "@/components/MobileTopBar";
 import { useAuth } from "@/context/AuthContext";
 import { useInbox } from "@/hooks/useInbox";
 import logo from "@/app/images/logoz.png";
@@ -15,9 +16,15 @@ const links = [
   { href: "/actor/dashboard", label: "Home", icon: House },
   { href: "/actor/briefs", label: "Applied", icon: BriefcaseBusiness },
   { href: "/actor/inbox", label: "Inbox", icon: MessageCircle },
-  { href: "/actor/albums", label: "Albums", icon: ImagePlus },
-  { href: "/actor/profile", label: "Profile", icon: UserRound },
+  { href: "/actor/network", label: "Network", icon: UsersRound },
+  { href: "/actor/account", label: "Account", icon: UserRound },
 ];
+
+function actorNavActive(pathname: string, href: string) {
+  if (href === "/actor/dashboard") return pathname === href;
+  if (href === "/actor/network") return pathname.startsWith(href) || pathname.startsWith("/actor/agencies");
+  return pathname.startsWith(href);
+}
 
 export default function ActorLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -55,7 +62,7 @@ export default function ActorLayout({ children }: { children: ReactNode }) {
         </div>
         <nav className="mt-7 space-y-2" aria-label="Actor navigation">
           {links.map(({ href, label, icon: Icon }) => {
-            const active = href === "/actor/dashboard" ? pathname === href : pathname.startsWith(href);
+            const active = actorNavActive(pathname, href);
             return (
               <Link key={label} href={href} className={`flex min-h-12 items-center gap-3 rounded-xl px-4 text-sm font-semibold transition ${active ? "bg-brand-navy text-white shadow-lg shadow-brand-navy/15" : "text-slate-600 hover:bg-brand-ice hover:text-brand-navy"}`}>
                 <span className="relative">
@@ -71,16 +78,19 @@ export default function ActorLayout({ children }: { children: ReactNode }) {
           <LogOut className="size-5" />Log out
         </button>
       </aside>
-      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-brand-silver/70 bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
-        <Image src={logo} alt="CASTARZ" className="h-8 w-auto" />
-        <button type="button" onClick={() => void handleSignOut()} className="flex min-h-11 items-center gap-2 rounded-xl bg-brand-navy px-3 text-sm font-bold text-white">
-          <LogOut className="size-4" />Log out
-        </button>
-      </header>
-      <main className="mx-auto min-h-dvh max-w-6xl px-4 py-6 pb-24 sm:px-7 lg:ml-72 lg:max-w-none lg:px-10 lg:py-10 lg:pb-10">{children}</main>
-      <nav className="fixed inset-x-0 bottom-0 z-30 flex h-[76px] items-center justify-around border-t border-brand-silver/70 bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden" aria-label="Actor navigation">
+      <MobileTopBar
+        extra={
+          <Link href="/actor/inbox" className="relative flex size-11 items-center justify-center rounded-xl bg-brand-ice text-brand-navy" aria-label="Inbox">
+            <MessageCircle className="size-5" />
+            {unreadCount > 0 && <span className="absolute right-2 top-2 size-2 rounded-full bg-brand-blue" />}
+          </Link>
+        }
+        onSignOut={() => void handleSignOut()}
+      />
+      <main className="mx-auto min-h-dvh max-w-6xl px-4 py-6 pb-28 sm:px-7 lg:ml-72 lg:max-w-none lg:px-10 lg:py-10 lg:pb-10">{children}</main>
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex h-[76px] items-center justify-around border-t border-brand-silver/70 bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden" aria-label="Actor navigation">
         {links.map(({ href, label, icon: Icon }) => {
-          const active = href === "/actor/dashboard" ? pathname === href : pathname.startsWith(href);
+          const active = actorNavActive(pathname, href);
           return (
             <Link key={label} href={href} className={`relative flex min-h-14 min-w-14 flex-col items-center justify-center gap-1 rounded-xl px-2 text-[10px] font-bold ${active ? "text-brand-blue" : "text-slate-500"}`}>
               <span className="relative">

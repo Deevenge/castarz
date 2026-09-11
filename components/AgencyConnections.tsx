@@ -2,6 +2,7 @@
 
 import { collection, doc, onSnapshot, query, serverTimestamp, setDoc, where } from "firebase/firestore";
 import { Building2, Check, LoaderCircle, Search, Send, UserMinus } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
@@ -103,16 +104,12 @@ export function AgencyConnections() {
   }
 
   return (
-    <section id="network" className="scroll-mt-24 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-brand-silver/70 sm:p-7">
+    <section className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-brand-silver/70 sm:p-7">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-sm font-bold tracking-[0.14em] text-brand-blue">MY NETWORK</p>
-          <h2 className="mt-1 text-xl font-bold">Connect with agencies</h2>
-          <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">Send a request the same way you would on LinkedIn. The agency reviews your profile, then approves you into their private network.</p>
-        </div>
-        <label className="relative w-full sm:w-64">
+        <p className="max-w-xl text-sm leading-6 text-slate-600">Search an agency, open their profile, then connect. You will see their briefs, about info, and live roles.</p>
+        <label className="relative w-full sm:w-72">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search agencies" className="min-h-11 w-full rounded-xl border border-slate-200 bg-brand-ice pl-10 pr-4 text-sm outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search agencies by name" className="min-h-12 w-full rounded-full border border-slate-200 bg-brand-ice pl-10 pr-4 text-sm outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
         </label>
       </div>
       {notice && <p className="mt-5 rounded-xl bg-brand-ice px-4 py-3 text-sm font-semibold text-brand-navy">{notice}</p>}
@@ -125,7 +122,7 @@ export function AgencyConnections() {
           const busy = workingId === agency.id;
           return (
             <article key={agency.id} className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-gradient-to-r from-brand-ice/80 to-white p-4">
-              <div className="flex min-w-0 items-center gap-3">
+              <Link href={`/actor/agencies/${agency.id}`} className="flex min-w-0 flex-1 items-center gap-3">
                 <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-brand-navy text-sm font-extrabold text-brand-cyan">{agency.name.slice(0, 2).toUpperCase()}</div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -136,7 +133,7 @@ export function AgencyConnections() {
                   <p className="mt-1 text-sm text-slate-500">{agency.username ? `@${agency.username}` : agency.email}</p>
                   <p className="mt-1 line-clamp-2 text-sm text-slate-600">{agency.description}</p>
                 </div>
-              </div>
+              </Link>
               {connected ? (
                 <span className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-emerald-50 px-4 text-sm font-bold text-emerald-700"><Check className="size-4" />Connected</span>
               ) : pending ? (
