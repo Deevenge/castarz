@@ -16,6 +16,7 @@ const tone: Record<NotificationType, string> = {
   application_standby: "bg-amber-100 text-amber-700",
   application_rejected: "bg-red-50 text-red-700",
   booking_confirmed: "bg-emerald-100 text-emerald-700",
+  brief_closed: "bg-brand-navy text-brand-cyan",
 };
 
 const icon: Record<NotificationType, typeof Bell> = {
@@ -26,6 +27,7 @@ const icon: Record<NotificationType, typeof Bell> = {
   application_standby: Bell,
   application_rejected: Bell,
   booking_confirmed: CheckCircle2,
+  brief_closed: Handshake,
 };
 
 function timeLabel(ms: number) {
@@ -119,9 +121,15 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
                 <p className="leading-6 text-slate-700">{selected.body}</p>
               </div>
               {selected.href && (
-                <Link href={selected.href} className="mt-6 inline-flex min-h-11 w-fit items-center rounded-xl bg-brand-navy px-4 text-sm font-bold text-white hover:bg-brand-blue">
-                  Open related workspace
-                </Link>
+                selected.href.startsWith("http") ? (
+                  <a href={selected.href} target="_blank" rel="noreferrer" className="mt-6 inline-flex min-h-11 w-fit items-center rounded-xl bg-brand-navy px-4 text-sm font-bold text-white hover:bg-brand-blue">
+                    Open WhatsApp group
+                  </a>
+                ) : (
+                  <Link href={selected.href} className="mt-6 inline-flex min-h-11 w-fit items-center rounded-xl bg-brand-navy px-4 text-sm font-bold text-white hover:bg-brand-blue">
+                    Open related workspace
+                  </Link>
+                )
               )}
             </article>
           )}

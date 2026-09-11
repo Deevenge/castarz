@@ -10,7 +10,8 @@ export type NotificationType =
   | "application_received"
   | "application_standby"
   | "application_rejected"
-  | "booking_confirmed";
+  | "booking_confirmed"
+  | "brief_closed";
 
 export interface NotificationPayload {
   recipientUid: string;

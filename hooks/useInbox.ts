@@ -27,6 +27,7 @@ function asNotificationType(value: unknown): NotificationType {
     "application_standby",
     "application_rejected",
     "booking_confirmed",
+    "brief_closed",
   ];
   return allowed.includes(value as NotificationType) ? (value as NotificationType) : "application_received";
 }
@@ -34,14 +35,10 @@ function asNotificationType(value: unknown): NotificationType {
 export function useInbox() {
   const { user } = useAuth();
   const [items, setItems] = useState<InboxItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!user) {
-      setItems([]);
-      setLoading(false);
-      return;
-    }
+    if (!user) return;
 
     const inboxQuery = query(collection(db, "notifications"), where("recipientUid", "==", user.uid));
     return onSnapshot(inboxQuery, (snapshot) => {
@@ -65,6 +62,7 @@ export function useInbox() {
     }, () => setLoading(false));
   }, [user]);
 
-  const unreadCount = useMemo(() => items.filter((item) => !item.read).length, [items]);
-  return { items, loading, unreadCount };
+  const visibleItems = useMemo(() => user ? items : [], [items, user]);
+  const unreadCount = useMemo(() => visibleItems.filter((item) => !item.read).length, [visibleItems]);
+  return { items: visibleItems, loading: user ? loading : false, unreadCount };
 }

@@ -168,7 +168,8 @@ service cloud.firestore {
           'application_received',
           'application_standby',
           'application_rejected',
-          'booking_confirmed'
+          'booking_confirmed',
+          'brief_closed'
         ];
       allow update: if signedIn()
         && resource.data.recipientUid == request.auth.uid
