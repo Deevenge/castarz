@@ -1,7 +1,7 @@
 "use client";
 
-import { addDoc, collection, doc, getDoc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
-import { CheckCircle2, Clock3, Globe2, LoaderCircle, LockKeyhole, MapPin, MessageCircle, Plus, Send, UsersRound, X } from "lucide-react";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { CheckCircle2, Clock3, Edit3, Globe2, LoaderCircle, LockKeyhole, MapPin, MessageCircle, Plus, Send, Trash2, UsersRound, X } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { briefFromDocument, type AgentBrief, type BriefStatus, type BriefVisibility } from "@/lib/agent-data";
@@ -50,6 +50,8 @@ export default function BriefsPage() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
   const [closingBrief, setClosingBrief] = useState<AgentBrief | null>(null);
+  const [editingBrief, setEditingBrief] = useState<AgentBrief | null>(null);
+  const [deletingBrief, setDeletingBrief] = useState<AgentBrief | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -79,7 +81,7 @@ export default function BriefsPage() {
     }, {});
   }, [applications]);
 
-  async function create(event: FormEvent<HTMLFormElement>) {
+  async function saveBrief(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!user || !profile) return;
     setSaving(true);
@@ -88,18 +90,20 @@ export default function BriefsPage() {
       const agency = await getDoc(doc(db, "agencies", user.uid));
       const agencyName = typeof agency.data()?.name === "string" && agency.data()?.name.trim() ? agency.data()?.name : profile.email;
       const talentNeeded = Math.max(0, Number.parseInt(form.talentNeeded, 10) || 0);
-      await addDoc(collection(db, "briefs"), {
+      const payload = {
         ...form,
         talentNeeded,
         agencyId: user.uid,
         agencyName,
         requirements: form.requirements.split(",").map((item) => item.trim()).filter(Boolean),
-        createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
+      };
+      if (editingBrief) await updateDoc(doc(db, "briefs", editingBrief.id), payload);
+      else await addDoc(collection(db, "briefs"), { ...payload, createdAt: serverTimestamp() });
       setForm(blank);
       setOpen(false);
-      setNotice(form.status === "published" ? "Brief is live in the selected audience feed." : "Draft saved.");
+      setEditingBrief(null);
+      setNotice(editingBrief ? "Brief updated." : form.status === "published" ? "Brief is live in the selected audience feed." : "Draft saved.");
     } catch {
       setNotice("We could not save this brief. Check that the Firestore rules have been published.");
     } finally {
@@ -111,6 +115,36 @@ export default function BriefsPage() {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
+  function startNewBrief() {
+    setEditingBrief(null);
+    setForm(blank);
+    setOpen(true);
+  }
+
+  function startEditBrief(brief: AgentBrief) {
+    setEditingBrief(brief);
+    setForm({
+      title: brief.title,
+      production: brief.production,
+      location: brief.location,
+      rate: brief.rate,
+      shootDate: brief.shootDate,
+      description: brief.description,
+      requirements: brief.requirements.join(", "),
+      talentNeeded: brief.talentNeeded ? String(brief.talentNeeded) : "",
+      status: brief.status,
+      visibility: brief.visibility,
+    });
+    setOpen(true);
+    setNotice("");
+  }
+
+  function closeForm() {
+    setOpen(false);
+    setEditingBrief(null);
+    setForm(blank);
+  }
+
   return (
     <div className="mx-auto max-w-5xl">
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -119,7 +153,7 @@ export default function BriefsPage() {
           <h1 className="mt-1 text-3xl font-bold">Publish with the right reach.</h1>
           <p className="mt-2 text-slate-600">Set how many actors you need, then close the brief when the cast is booked.</p>
         </div>
-        <button onClick={() => setOpen(true)} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-brand-blue px-5 font-bold text-white hover:bg-brand-navy"><Plus className="size-5" />New brief</button>
+        <button onClick={startNewBrief} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-brand-blue px-5 font-bold text-white hover:bg-brand-navy"><Plus className="size-5" />New brief</button>
       </header>
 
       {notice && <p className="mt-6 flex items-center gap-2 rounded-xl bg-brand-ice px-4 py-3 text-sm font-semibold text-brand-navy"><CheckCircle2 className="size-5 text-brand-blue" />{notice}</p>}
@@ -128,12 +162,12 @@ export default function BriefsPage() {
         <section className="mt-7 rounded-3xl bg-white p-5 shadow-xl shadow-brand-navy/10 ring-1 ring-brand-silver/70 sm:p-7">
           <div className="flex justify-between gap-4">
             <div>
-              <h2 className="text-xl font-bold">New casting brief</h2>
-              <p className="mt-1 text-sm text-slate-600">Choose exactly who can see and apply.</p>
+              <h2 className="text-xl font-bold">{editingBrief ? "Edit casting brief" : "New casting brief"}</h2>
+              <p className="mt-1 text-sm text-slate-600">{editingBrief ? "Adjust the brief details, audience, status, or actors needed." : "Choose exactly who can see and apply."}</p>
             </div>
-            <button onClick={() => setOpen(false)} className="flex size-10 items-center justify-center rounded-full hover:bg-slate-100" aria-label="Close form"><X className="size-5" /></button>
+            <button onClick={closeForm} className="flex size-10 items-center justify-center rounded-full hover:bg-slate-100" aria-label="Close form"><X className="size-5" /></button>
           </div>
-          <form onSubmit={create} className="mt-6 grid gap-5 sm:grid-cols-2">
+          <form onSubmit={saveBrief} className="mt-6 grid gap-5 sm:grid-cols-2">
             <Input label="Brief title" value={form.title} set={(title) => updateForm("title", title)} required />
             <Input label="Production" value={form.production} set={(production) => updateForm("production", production)} />
             <Input label="Location" value={form.location} set={(location) => updateForm("location", location)} />
@@ -157,10 +191,11 @@ export default function BriefsPage() {
               <select value={form.status} onChange={(event) => updateForm("status", event.target.value as BriefStatus)} className="min-h-12 w-full rounded-xl border border-slate-300 px-4">
                 <option value="published">Publish now</option>
                 <option value="draft">Save draft</option>
+                {editingBrief?.status === "closed" && <option value="closed">Keep closed</option>}
               </select>
             </label>
             <div className="flex items-end">
-              <button disabled={saving} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-navy font-bold text-white hover:bg-brand-blue disabled:opacity-60">{saving ? <LoaderCircle className="size-5 animate-spin" /> : <Send className="size-5" />}{saving ? "Publishing..." : form.status === "published" ? "Publish brief" : "Save draft"}</button>
+              <button disabled={saving} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-navy font-bold text-white hover:bg-brand-blue disabled:opacity-60">{saving ? <LoaderCircle className="size-5 animate-spin" /> : editingBrief ? <Edit3 className="size-5" /> : <Send className="size-5" />}{saving ? "Saving..." : editingBrief ? "Save changes" : form.status === "published" ? "Publish brief" : "Save draft"}</button>
             </div>
           </form>
         </section>
@@ -173,6 +208,8 @@ export default function BriefsPage() {
             brief={brief}
             applications={applicationsByBrief[brief.id] ?? []}
             onClose={() => setClosingBrief(brief)}
+            onEdit={() => startEditBrief(brief)}
+            onDelete={() => setDeletingBrief(brief)}
           />
         ))}
         {!briefs.length && <div className="rounded-3xl border-2 border-dashed border-brand-silver bg-white p-10 text-center"><Plus className="mx-auto size-8 text-brand-blue" /><p className="mt-4 font-bold">Your brief board is clear.</p></div>}
@@ -190,11 +227,22 @@ export default function BriefsPage() {
           }}
         />
       )}
+      {deletingBrief && (
+        <DeleteBriefDialog
+          brief={deletingBrief}
+          applications={applicationsByBrief[deletingBrief.id] ?? []}
+          onClose={() => setDeletingBrief(null)}
+          onDone={(message) => {
+            setDeletingBrief(null);
+            setNotice(message);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function BriefCard({ brief, applications, onClose }: { brief: AgentBrief; applications: Application[]; onClose: () => void }) {
+function BriefCard({ brief, applications, onClose, onEdit, onDelete }: { brief: AgentBrief; applications: Application[]; onClose: () => void; onEdit: () => void; onDelete: () => void }) {
   const bookedCount = applications.filter((application) => application.status === "booked").length;
   const remaining = Math.max((brief.talentNeeded || 0) - bookedCount, 0);
   const totalLabel = brief.talentNeeded ? `${remaining} remaining of ${brief.talentNeeded}` : `${bookedCount} booked`;
@@ -221,19 +269,26 @@ function BriefCard({ brief, applications, onClose }: { brief: AgentBrief; applic
         <span className="flex items-center gap-1"><Clock3 className="size-4 text-brand-blue" />{brief.shootDate || "Date pending"}</span>
         <span className="flex items-center gap-1"><UsersRound className="size-4 text-brand-blue" />{totalLabel}</span>
       </div>
-      {brief.status === "closed" && (brief.closeMessage || brief.whatsappLink) && (
+      {brief.status === "closed" && (
         <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
-          {brief.closeMessage && <p>{brief.closeMessage}</p>}
-          {brief.whatsappLink && <a href={brief.whatsappLink} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-2 font-bold text-brand-blue"><MessageCircle className="size-4" />WhatsApp group</a>}
+          <p className="font-bold text-brand-navy">Final cast update sent to booked actors.</p>
+          <p className="mt-1">This brief is closed and no longer appears in live actor feeds.</p>
+          {brief.whatsappLink && <a href={brief.whatsappLink} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 font-bold text-brand-blue"><MessageCircle className="size-4" />Open WhatsApp group</a>}
         </div>
       )}
-      {brief.status === "published" && (
-        <div className="mt-5 flex justify-end border-t border-slate-100 pt-4">
+      <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
+        <button type="button" onClick={onEdit} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-ice px-4 text-sm font-bold text-brand-navy hover:bg-brand-cyan/20">
+          <Edit3 className="size-4" />Edit brief
+        </button>
+        <button type="button" onClick={onDelete} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-red-50 px-4 text-sm font-bold text-red-700 hover:bg-red-100">
+          <Trash2 className="size-4" />Delete brief
+        </button>
+        {brief.status === "published" && (
           <button type="button" onClick={onClose} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-navy px-4 text-sm font-bold text-white hover:bg-brand-blue">
             <CheckCircle2 className="size-4" />Close brief
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </article>
   );
 }
@@ -321,6 +376,67 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
             </button>
           </div>
         </form>
+      </section>
+    </div>
+  );
+}
+
+function DeleteBriefDialog({ brief, applications, onClose, onDone }: { brief: AgentBrief; applications: Application[]; onClose: () => void; onDone: (message: string) => void }) {
+  const bookedCount = applications.filter((application) => application.status === "booked").length;
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState("");
+
+  async function deleteBrief() {
+    setWorking(true);
+    setError("");
+    try {
+      const bookingSnapshot = await getDocs(query(collection(db, "bookings"), where("briefId", "==", brief.id)));
+      await Promise.all([
+        ...applications.map((application) => deleteDoc(doc(db, "applications", application.id))),
+        ...bookingSnapshot.docs.map((booking) => deleteDoc(doc(db, "bookings", booking.id))),
+        deleteDoc(doc(db, "briefs", brief.id)),
+      ]);
+      onDone(`"${brief.title}" was deleted.`);
+    } catch {
+      setError("We could not delete this brief. Please try again.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-brand-navy/60 p-0 backdrop-blur-sm sm:items-center sm:p-6">
+      <section className="w-full max-w-lg rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl sm:p-8">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-bold tracking-[0.16em] text-red-600">DELETE BRIEF</p>
+            <h2 className="mt-1 text-2xl font-bold text-brand-navy">{brief.title}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">This removes the brief from your board and clears its application records. Booked actors will no longer see this application in their applied list.</p>
+          </div>
+          <button type="button" onClick={onClose} className="flex size-10 items-center justify-center rounded-full hover:bg-slate-100" aria-label="Close dialog"><X className="size-5" /></button>
+        </div>
+        <div className="mt-6 grid grid-cols-3 overflow-hidden rounded-2xl border border-red-100 bg-red-50">
+          <div className="border-r border-red-100 p-4">
+            <p className="text-2xl font-bold text-red-700">{applications.length}</p>
+            <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-red-500">Applications</p>
+          </div>
+          <div className="border-r border-red-100 p-4">
+            <p className="text-2xl font-bold text-red-700">{bookedCount}</p>
+            <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-red-500">Booked</p>
+          </div>
+          <div className="p-4">
+            <p className="text-2xl font-bold text-red-700">{brief.status === "closed" ? "Yes" : "No"}</p>
+            <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-red-500">Closed</p>
+          </div>
+        </div>
+        {error && <p className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</p>}
+        <div className="mt-6 grid grid-cols-2 gap-3">
+          <button type="button" onClick={onClose} className="min-h-12 rounded-xl border border-slate-300 font-bold text-slate-600 hover:bg-slate-50">Cancel</button>
+          <button type="button" disabled={working} onClick={() => void deleteBrief()} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-red-600 font-bold text-white hover:bg-red-700 disabled:opacity-60">
+            {working ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+            {working ? "Deleting..." : "Delete brief"}
+          </button>
+        </div>
       </section>
     </div>
   );

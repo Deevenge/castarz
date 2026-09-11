@@ -78,9 +78,11 @@ service cloud.firestore {
         && request.resource.data.agencyId == request.auth.uid
         && request.resource.data.status in ['draft', 'published', 'closed']
         && request.resource.data.visibility in ['public', 'network'];
-      allow update, delete: if isAgent()
+      allow update: if isAgent()
         && resource.data.agencyId == request.auth.uid
         && request.resource.data.agencyId == resource.data.agencyId;
+      allow delete: if isAgent()
+        && resource.data.agencyId == request.auth.uid;
     }
 
     match /applications/{applicationId} {
@@ -106,6 +108,8 @@ service cloud.firestore {
         && unchanged('briefId')
         && request.resource.data.status in ['pending', 'standby', 'booked', 'rejected']
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedAt', 'updatedAt']);
+      allow delete: if isAgent()
+        && resource.data.agencyId == request.auth.uid;
     }
 
     match /connections/{connectionId} {
@@ -127,6 +131,49 @@ service cloud.firestore {
           && unchanged('actorUid')
           && request.resource.data.status in ['pending', 'withdrawn']
           && resource.data.status in ['pending', 'declined', 'withdrawn']);
+    }
+
+    match /posts/{postId} {
+      function ownsPost() {
+        return signedIn() && resource.data.authorUid == request.auth.uid;
+      }
+      function validPostAuthor() {
+        return request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.authorRole in ['actor', 'agent']
+          && (
+            (isActor()
+              && request.resource.data.authorRole == 'actor'
+              && request.resource.data.actorUid == request.auth.uid
+              && request.resource.data.agencyId == '')
+            || (isAgent()
+              && request.resource.data.authorRole == 'agent'
+              && request.resource.data.agencyId == request.auth.uid
+              && request.resource.data.actorUid == '')
+          );
+      }
+      function validPostShape() {
+        return request.resource.data.caption is string
+          && request.resource.data.caption.size() <= 360
+          && request.resource.data.authorName is string
+          && request.resource.data.authorPhoto is string
+          && request.resource.data.mediaUrl is string
+          && request.resource.data.mediaType in ['none', 'image', 'video']
+          && request.resource.data.visibility == 'public';
+      }
+
+      allow read: if signedIn()
+        && resource.data.visibility == 'public'
+        && resource.data.authorRole in ['actor', 'agent'];
+      allow create: if signedIn()
+        && validPostAuthor()
+        && validPostShape();
+      allow update: if ownsPost()
+        && request.resource.data.authorUid == resource.data.authorUid
+        && request.resource.data.authorRole == resource.data.authorRole
+        && request.resource.data.actorUid == resource.data.actorUid
+        && request.resource.data.agencyId == resource.data.agencyId
+        && validPostShape();
+      allow delete: if ownsPost();
     }
 
     // Production guest links: anyone with the ID can view that shortlist only.
@@ -152,6 +199,8 @@ service cloud.firestore {
         && unchanged('briefId')
         && request.resource.data.status in ['confirmed', 'cancelled']
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt', 'cancelledAt']);
+      allow delete: if isAgent()
+        && resource.data.agencyId == request.auth.uid;
     }
 
     match /notifications/{notificationId} {

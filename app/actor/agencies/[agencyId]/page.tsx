@@ -63,17 +63,14 @@ export default function AgencyPublicPage() {
   }, [agencyId]);
 
   useEffect(() => {
-    if (!agencyId || status !== "approved") {
-      setNetworkBriefs([]);
-      return;
-    }
+    if (!agencyId || status !== "approved") return;
     return onSnapshot(
       query(collection(db, "briefs"), where("agencyId", "==", agencyId), where("status", "==", "published"), where("visibility", "==", "network")),
       (snapshot) => setNetworkBriefs(snapshot.docs.map((item) => briefFromDocument(item.id, item.data()))),
     );
   }, [agencyId, status]);
 
-  const visibleBriefs = useMemo(() => [...briefs, ...networkBriefs], [briefs, networkBriefs]);
+  const visibleBriefs = useMemo(() => status === "approved" ? [...briefs, ...networkBriefs] : briefs, [briefs, networkBriefs, status]);
 
   async function connect() {
     if (!user || !agency) return;
