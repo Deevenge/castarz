@@ -1,16 +1,7 @@
 "use client";
 
-import { BellRing, CheckCircle2, MapPin, MessageCircle, UsersRound } from "lucide-react";
-import { useState } from "react";
+import { InboxWorkspace } from "@/components/InboxWorkspace";
 
-const items = [
-  { title: "Ubuntu Talent House", preview: "Your agency connection has been approved.", time: "Now", icon: CheckCircle2, color: "bg-emerald-100 text-emerald-700", unread: true },
-  { title: "Mosaic Casting", preview: "You have been shortlisted for Commercial Lead — Telecoms.", time: "24m", icon: BellRing, color: "bg-brand-cyan/20 text-brand-blue", unread: true },
-  { title: "TV Series — Restaurant Scene", preview: "Shoot group details: call time is 06:30 at Cape Town Film Studios.", time: "Yesterday", icon: UsersRound, color: "bg-violet-100 text-violet-700", unread: false },
-];
-
-export default function InboxPage() {
-  const [selected, setSelected] = useState(0);
-  const active = items[selected];
-  return <div className="mx-auto max-w-5xl"><header className="mb-7"><p className="text-sm font-bold tracking-[0.18em] text-brand-blue">INBOX</p><h1 className="mt-1 text-3xl font-bold">Casting updates</h1><p className="mt-2 text-slate-600">Important news from your agencies and productions.</p></header><div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-brand-silver/70 md:grid md:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.4fr)]"><section className="border-b border-brand-silver/60 md:border-b-0 md:border-r"><div className="border-b border-brand-silver/60 px-5 py-4"><h2 className="font-bold">Messages & alerts</h2></div>{items.map((item, index) => { const Icon = item.icon; return <button key={item.title} type="button" onClick={() => setSelected(index)} className={`flex w-full items-center gap-3 border-b border-slate-100 p-4 text-left transition ${selected === index ? "bg-brand-ice" : "hover:bg-slate-50"}`}><div className={`flex size-11 shrink-0 items-center justify-center rounded-2xl ${item.color}`}><Icon className="size-5" /></div><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><p className="truncate font-bold text-brand-navy">{item.title}</p><span className="text-xs text-slate-400">{item.time}</span></div><p className="mt-1 truncate text-sm text-slate-600">{item.preview}</p></div>{item.unread && <span className="size-2 shrink-0 rounded-full bg-brand-blue" />}</button>; })}</section><article className="hidden min-h-[420px] flex-col p-7 md:flex"><div className="flex items-center gap-3 border-b border-brand-silver/60 pb-5"><div className={`flex size-12 items-center justify-center rounded-2xl ${active.color}`}><active.icon className="size-5" /></div><div><p className="font-bold text-brand-navy">{active.title}</p><p className="text-sm text-slate-500">CASTARZ notification</p></div></div><div className="mt-7 max-w-md rounded-2xl rounded-tl-sm bg-brand-ice p-5"><p className="font-bold text-brand-navy">{active.title}</p><p className="mt-2 leading-6 text-slate-700">{active.preview}</p>{selected === 2 && <p className="mt-4 flex items-center gap-2 text-sm font-semibold text-brand-blue"><MapPin className="size-4" />Cape Town Film Studios</p>}</div><div className="mt-auto flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-400"><MessageCircle className="size-4" />Replies will appear here when this conversation opens.</div></article></div><p className="mt-4 text-center text-sm text-slate-500 md:hidden">Tap an update to review it.</p></div>;
+export default function ActorInboxPage() {
+  return <InboxWorkspace eyebrow="INBOX" title="Casting updates" empty="When an agency connects with you, reviews an application, or confirms a booking, it will land here." />;
 }

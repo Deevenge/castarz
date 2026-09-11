@@ -1,11 +1,36 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
-    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+    function userRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
     function isAgent() {
-      return signedIn()
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'agent';
+      return signedIn() && userRole() == 'agent';
+    }
+    function isActor() {
+      return signedIn() && userRole() == 'actor';
+    }
+    function connectionDoc(agencyId, actorUid) {
+      return get(/databases/$(database)/documents/connections/$(agencyId + '_' + actorUid));
+    }
+    function approvedConnection(agencyId, actorUid) {
+      return exists(/databases/$(database)/documents/connections/$(agencyId + '_' + actorUid))
+        && connectionDoc(agencyId, actorUid).data.status == 'approved';
+    }
+    function appliedToBrief(briefId) {
+      return exists(/databases/$(database)/documents/applications/$(briefId + '_' + request.auth.uid));
+    }
+    function briefData() {
+      return get(/databases/$(database)/documents/briefs/$(request.resource.data.briefId)).data;
+    }
+    function unchanged(field) {
+      return request.resource.data[field] == resource.data[field];
     }
 
     match /users/{uid} {
@@ -14,49 +39,141 @@ service cloud.firestore {
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.role in ['actor', 'agent'];
       allow update: if isOwner(uid)
-        && request.resource.data.role == resource.data.role
-        && request.resource.data.uid == resource.data.uid;
+        && unchanged('role')
+        && unchanged('uid');
     }
 
+    // Actors own their profiles. Listing the collection is denied so agencies cannot browse the talent pool.
+    // An agent can get a single profile by uid (from an application or connection they already have).
     match /actors/{uid} {
-      allow read: if signedIn();
+      allow get: if isOwner(uid) || isAgent();
+      allow list: if false;
       allow write: if isOwner(uid);
     }
 
+    // Agencies are discoverable so actors can send connection requests.
     match /agencies/{uid} {
       allow read: if signedIn();
       allow write: if isOwner(uid) && isAgent();
     }
 
     match /briefs/{briefId} {
-      allow read: if signedIn();
-      allow create: if isAgent() && request.resource.data.agencyId == request.auth.uid;
-      allow update, delete: if isAgent() && resource.data.agencyId == request.auth.uid;
+      function ownsBrief() {
+        return isAgent() && resource.data.agencyId == request.auth.uid;
+      }
+      function publishedPublic() {
+        return isActor()
+          && resource.data.status == 'published'
+          && resource.data.visibility == 'public';
+      }
+      function publishedNetwork() {
+        return isActor()
+          && resource.data.status == 'published'
+          && resource.data.visibility == 'network'
+          && approvedConnection(resource.data.agencyId, request.auth.uid);
+      }
+
+      allow get: if signedIn() && (ownsBrief() || publishedPublic() || publishedNetwork() || appliedToBrief(briefId));
+      allow list: if signedIn() && (ownsBrief() || publishedPublic() || publishedNetwork());
+      allow create: if isAgent()
+        && request.resource.data.agencyId == request.auth.uid
+        && request.resource.data.status in ['draft', 'published', 'closed']
+        && request.resource.data.visibility in ['public', 'network'];
+      allow update, delete: if isAgent()
+        && resource.data.agencyId == request.auth.uid
+        && request.resource.data.agencyId == resource.data.agencyId;
     }
 
     match /applications/{applicationId} {
-      allow create: if signedIn()
+      allow create: if isActor()
         && request.resource.data.actorUid == request.auth.uid
-        && request.resource.data.status == 'pending';
+        && request.resource.data.status == 'pending'
+        && request.resource.data.briefId is string
+        && request.resource.data.agencyId is string
+        && exists(/databases/$(database)/documents/briefs/$(request.resource.data.briefId))
+        && request.resource.data.agencyId == briefData().agencyId
+        && briefData().status == 'published'
+        && (
+          briefData().visibility == 'public'
+          || (briefData().visibility == 'network'
+            && approvedConnection(briefData().agencyId, request.auth.uid))
+        );
       allow read: if signedIn()
         && (resource.data.actorUid == request.auth.uid || resource.data.agencyId == request.auth.uid);
-      allow update: if isAgent() && resource.data.agencyId == request.auth.uid;
+      allow update: if isAgent()
+        && resource.data.agencyId == request.auth.uid
+        && unchanged('agencyId')
+        && unchanged('actorUid')
+        && unchanged('briefId')
+        && request.resource.data.status in ['pending', 'standby', 'booked', 'rejected']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedAt', 'updatedAt']);
     }
 
     match /connections/{connectionId} {
-      allow create: if signedIn()
+      allow create: if isActor()
         && request.resource.data.actorUid == request.auth.uid
-        && request.resource.data.status == 'pending';
+        && request.resource.data.status == 'pending'
+        && request.resource.data.agencyId is string
+        && exists(/databases/$(database)/documents/agencies/$(request.resource.data.agencyId));
       allow read: if signedIn()
         && (resource.data.actorUid == request.auth.uid || resource.data.agencyId == request.auth.uid);
-      allow update: if isAgent() && resource.data.agencyId == request.auth.uid;
+      allow update: if (isAgent()
+          && resource.data.agencyId == request.auth.uid
+          && unchanged('agencyId')
+          && unchanged('actorUid')
+          && request.resource.data.status in ['pending', 'approved', 'declined'])
+        || (isActor()
+          && resource.data.actorUid == request.auth.uid
+          && unchanged('agencyId')
+          && unchanged('actorUid')
+          && request.resource.data.status in ['pending', 'withdrawn']
+          && resource.data.status in ['pending', 'declined', 'withdrawn']);
     }
 
+    // Production guest links: anyone with the ID can view that shortlist only.
     match /shortlists/{shortlistId} {
       allow get: if true;
       allow list: if isAgent() && resource.data.agencyId == request.auth.uid;
       allow create: if isAgent() && request.resource.data.agencyId == request.auth.uid;
       allow update, delete: if isAgent() && resource.data.agencyId == request.auth.uid;
+    }
+
+    match /bookings/{bookingId} {
+      allow create: if isAgent()
+        && request.resource.data.agencyId == request.auth.uid
+        && request.resource.data.actorUid is string
+        && request.resource.data.briefId is string
+        && request.resource.data.status == 'confirmed';
+      allow read: if signedIn()
+        && (resource.data.actorUid == request.auth.uid || resource.data.agencyId == request.auth.uid);
+      allow update: if isAgent()
+        && resource.data.agencyId == request.auth.uid
+        && unchanged('agencyId')
+        && unchanged('actorUid')
+        && unchanged('briefId')
+        && request.resource.data.status in ['confirmed', 'cancelled']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt', 'cancelledAt']);
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if signedIn() && resource.data.recipientUid == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.senderUid == request.auth.uid
+        && request.resource.data.recipientUid is string
+        && request.resource.data.recipientUid != request.auth.uid
+        && request.resource.data.read == false
+        && request.resource.data.type in [
+          'connection_request',
+          'connection_approved',
+          'connection_declined',
+          'application_received',
+          'application_standby',
+          'application_rejected',
+          'booking_confirmed'
+        ];
+      allow update: if signedIn()
+        && resource.data.recipientUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
     }
   }
 }
