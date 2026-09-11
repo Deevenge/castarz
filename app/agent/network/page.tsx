@@ -104,11 +104,11 @@ export default function NetworkPage() {
           <p className="mt-2 max-w-2xl text-slate-600">Daily posts, fresh looks, showreel moments, and a search bar when you need to find someone specific.</p>
         </div>
         <div className="flex items-center gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-brand-silver/70">
-          <button type="button" onClick={() => setPanel(panel === "requests" ? "" : "requests")} className={`relative flex size-11 items-center justify-center rounded-xl ${panel === "requests" ? "bg-brand-navy text-white" : "text-brand-navy hover:bg-brand-ice"}`} aria-label="Connection requests">
+          <button type="button" onClick={() => setPanel((current) => current === "requests" ? "" : "requests")} className={`relative flex size-11 cursor-pointer items-center justify-center rounded-xl transition ${panel === "requests" ? "bg-brand-navy text-white" : "text-brand-navy hover:bg-brand-ice"}`} aria-label="Connection requests">
             <UserPlus className="size-5" />
             {pending.length > 0 && <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-brand-cyan px-1 text-[11px] font-black leading-5 text-brand-navy">{pending.length}</span>}
           </button>
-          <button type="button" onClick={() => setPanel(panel === "approved" ? "" : "approved")} className={`relative flex size-11 items-center justify-center rounded-xl ${panel === "approved" ? "bg-brand-navy text-white" : "text-brand-navy hover:bg-brand-ice"}`} aria-label="Approved talent">
+          <button type="button" onClick={() => setPanel((current) => current === "approved" ? "" : "approved")} className={`relative flex size-11 cursor-pointer items-center justify-center rounded-xl transition ${panel === "approved" ? "bg-brand-navy text-white" : "text-brand-navy hover:bg-brand-ice"}`} aria-label="Approved talent">
             <UsersRound className="size-5" />
             {approved.length > 0 && <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-brand-ice px-1 text-[11px] font-black leading-5 text-brand-navy ring-1 ring-brand-silver">{approved.length}</span>}
           </button>
@@ -148,32 +148,6 @@ export default function NetworkPage() {
             <button onClick={() => setFeed("discover")} className={`flex min-h-11 items-center justify-center gap-2 rounded-lg text-sm font-bold ${feed === "discover" ? "bg-brand-navy text-white" : "text-slate-500"}`}><Grid3X3 className="size-4" />Discover</button>
             <button onClick={() => setFeed("mine")} className={`flex min-h-11 items-center justify-center gap-2 rounded-lg text-sm font-bold ${feed === "mine" ? "bg-brand-navy text-white" : "text-slate-500"}`}><ShieldCheck className="size-4" />My talent</button>
           </div>
-          {panel && (
-            <section className="mb-5 rounded-2xl bg-white p-5 shadow-xl shadow-brand-navy/10 ring-1 ring-brand-silver/70">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="font-bold text-brand-navy">{panel === "requests" ? "Connection requests" : "Approved talent"}</h2>
-                  <p className="text-sm text-slate-600">{panel === "requests" ? "Review actors asking to join your network." : "Your connected actor network."}</p>
-                </div>
-                <button type="button" onClick={() => setPanel("")} className="flex size-9 items-center justify-center rounded-full hover:bg-brand-ice" aria-label="Close panel"><X className="size-4" /></button>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {panel === "requests" && (pending.length ? pending.map((connection) => (
-                  <ActorRow
-                    key={connection.id}
-                    actor={actors[connection.actorUid]}
-                    actions={(
-                      <>
-                        <button disabled={working === connection.id} onClick={() => decide(connection, "declined")} className="flex size-10 items-center justify-center rounded-xl border border-slate-300 text-slate-500 hover:bg-red-50 hover:text-red-600" aria-label="Decline"><X className="size-4" /></button>
-                        <button disabled={working === connection.id} onClick={() => decide(connection, "approved")} className="flex min-h-10 items-center gap-2 rounded-xl bg-brand-blue px-4 text-sm font-bold text-white hover:bg-brand-navy">{working === connection.id ? <LoaderCircle className="size-4 animate-spin" /> : <Check className="size-4" />}Approve</button>
-                      </>
-                    )}
-                  />
-                )) : <p className="rounded-xl bg-brand-ice p-4 text-sm text-slate-600">No requests waiting yet.</p>)}
-                {panel === "approved" && (approved.length ? approved.map((connection) => <ActorRow key={connection.id} actor={actors[connection.actorUid]} />) : <p className="rounded-xl bg-brand-ice p-4 text-sm text-slate-600">Approved actors will appear here.</p>)}
-              </div>
-            </section>
-          )}
           <SocialPostGrid
             posts={visiblePosts}
             currentUserUid={user?.uid ?? ""}
@@ -184,6 +158,66 @@ export default function NetworkPage() {
           />
         </section>
       </section>
+      {panel && (
+        <TalentDrawer
+          panel={panel}
+          pending={pending}
+          approved={approved}
+          actors={actors}
+          working={working}
+          onClose={() => setPanel("")}
+          onDecide={decide}
+        />
+      )}
+    </div>
+  );
+}
+
+function TalentDrawer({ panel, pending, approved, actors, working, onClose, onDecide }: { panel: "requests" | "approved"; pending: Connection[]; approved: Connection[]; actors: Record<string, ActorCard>; working: string; onClose: () => void; onDecide: (connection: Connection, status: "approved" | "declined") => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-brand-navy/45 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <button type="button" className="hidden flex-1 cursor-default sm:block" onClick={onClose} aria-label="Close talent panel" />
+      <section className="flex h-dvh w-full max-w-md flex-col bg-white shadow-2xl sm:rounded-l-[28px]">
+        <header className="border-b border-brand-silver/70 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-blue">{panel === "requests" ? "Requests" : "Network"}</p>
+              <h2 className="mt-1 text-2xl font-bold text-brand-navy">{panel === "requests" ? "Connection requests" : "Approved talent"}</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{panel === "requests" ? "Review actors asking to join your agency network." : "Open connected actor profiles without crowding Discover."}</p>
+            </div>
+            <button type="button" onClick={onClose} className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-ice text-brand-navy hover:bg-brand-cyan/20" aria-label="Close panel">
+              <X className="size-5" />
+            </button>
+          </div>
+        </header>
+
+        <div className="flex-1 space-y-3 overflow-y-auto p-5">
+          {panel === "requests" && (pending.length ? pending.map((connection) => (
+            <ActorRow
+              key={connection.id}
+              actor={actors[connection.actorUid]}
+              actions={(
+                <>
+                  <button disabled={working === connection.id} onClick={() => onDecide(connection, "declined")} className="flex size-10 items-center justify-center rounded-xl border border-slate-300 text-slate-500 hover:bg-red-50 hover:text-red-600" aria-label="Decline"><X className="size-4" /></button>
+                  <button disabled={working === connection.id} onClick={() => onDecide(connection, "approved")} className="flex min-h-10 items-center gap-2 rounded-xl bg-brand-blue px-4 text-sm font-bold text-white hover:bg-brand-navy">{working === connection.id ? <LoaderCircle className="size-4 animate-spin" /> : <Check className="size-4" />}Approve</button>
+                </>
+              )}
+            />
+          )) : <EmptyDrawerState icon={UserPlus} title="No requests waiting" copy="New actor connection requests will appear here with a badge." />)}
+
+          {panel === "approved" && (approved.length ? approved.map((connection) => <ActorRow key={connection.id} actor={actors[connection.actorUid]} />) : <EmptyDrawerState icon={UsersRound} title="No approved talent yet" copy="Actors you approve will appear here for fast profile access." />)}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function EmptyDrawerState({ icon: Icon, title, copy }: { icon: typeof UserPlus; title: string; copy: string }) {
+  return (
+    <div className="flex min-h-56 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-brand-silver bg-brand-ice/60 p-7 text-center">
+      <Icon className="size-9 text-brand-blue" />
+      <p className="mt-4 font-bold text-brand-navy">{title}</p>
+      <p className="mt-2 text-sm leading-6 text-slate-600">{copy}</p>
     </div>
   );
 }
