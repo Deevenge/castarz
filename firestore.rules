@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+    function isAgent() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'agent';
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid)
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.role in ['actor', 'agent'];
+      allow update: if isOwner(uid)
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.uid == resource.data.uid;
+    }
+
+    match /actors/{uid} {
+      allow read: if signedIn();
+      allow write: if isOwner(uid);
+    }
+
+    match /agencies/{uid} {
+      allow read: if signedIn();
+      allow write: if isOwner(uid) && isAgent();
+    }
+
+    match /briefs/{briefId} {
+      allow read: if signedIn();
+      allow create: if isAgent() && request.resource.data.agencyId == request.auth.uid;
+      allow update, delete: if isAgent() && resource.data.agencyId == request.auth.uid;
+    }
+
+    match /applications/{applicationId} {
+      allow create: if signedIn()
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.status == 'pending';
+      allow read: if signedIn()
+        && (resource.data.actorUid == request.auth.uid || resource.data.agencyId == request.auth.uid);
+      allow update: if isAgent() && resource.data.agencyId == request.auth.uid;
+    }
+
+    match /connections/{connectionId} {
+      allow create: if signedIn()
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.status == 'pending';
+      allow read: if signedIn()
+        && (resource.data.actorUid == request.auth.uid || resource.data.agencyId == request.auth.uid);
+      allow update: if isAgent() && resource.data.agencyId == request.auth.uid;
+    }
+
+    match /shortlists/{shortlistId} {
+      allow get: if true;
+      allow list: if isAgent() && resource.data.agencyId == request.auth.uid;
+      allow create: if isAgent() && request.resource.data.agencyId == request.auth.uid;
+      allow update, delete: if isAgent() && resource.data.agencyId == request.auth.uid;
+    }
+  }
+}
