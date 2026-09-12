@@ -3,14 +3,14 @@
 import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 import Image from "next/image";
 import Link from "next/link";
-import { CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, Download, ExternalLink, LoaderCircle, Maximize2, UserRound, X, XCircle, ZoomIn } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, Download, ExternalLink, LayoutGrid, LoaderCircle, Maximize2, Search, UserRound, X, XCircle, ZoomIn } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { BookingConfirmDialog } from "@/components/BookingConfirmDialog";
 import { useAuth } from "@/context/AuthContext";
 import { briefFromDocument, type AgentBrief } from "@/lib/agent-data";
 import { db } from "@/lib/firebase";
 import { notifyQuietly } from "@/lib/notify";
-import { albumCategories, type AlbumCategory } from "@/lib/actor-profile";
+import { albumCategories, normalizeActorProfile, type AlbumCategory } from "@/lib/actor-profile";
 
 type Status = "pending" | "standby" | "booked" | "rejected";
 type Application = { id: string; briefId: string; actorUid: string; status: Status };
@@ -25,6 +25,9 @@ export default function ApplicationsPage() {
   const [working, setWorking] = useState("");
   const [bookingApp, setBookingApp] = useState<Application | null>(null);
   const [agencyName, setAgencyName] = useState("Your agency");
+  const [selectedBriefId, setSelectedBriefId] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<Status | "all">("all");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     if (!user) return;
@@ -42,6 +45,19 @@ export default function ApplicationsPage() {
   }, [user]);
 
   const groups = useMemo(() => briefs.map((brief) => ({ brief, entries: apps.filter((app) => app.briefId === brief.id) })).filter((group) => group.entries.length), [apps, briefs]);
+  const activeBrief = selectedBriefId === "all" ? null : briefs.find((brief) => brief.id === selectedBriefId);
+  const filteredApps = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return apps.filter((application) => {
+      const actor = actors[application.actorUid];
+      const brief = briefs.find((item) => item.id === application.briefId);
+      const matchesBrief = selectedBriefId === "all" || application.briefId === selectedBriefId;
+      const matchesStatus = statusFilter === "all" || application.status === statusFilter;
+      const matchesSearch = !needle || [actor?.fullName, actor?.stageName, actor?.availabilityStatus, brief?.title].filter(Boolean).join(" ").toLowerCase().includes(needle);
+      return matchesBrief && matchesStatus && matchesSearch;
+    });
+  }, [apps, actors, briefs, search, selectedBriefId, statusFilter]);
+  const statusCounts = useMemo(() => apps.reduce<Record<Status, number>>((counts, application) => ({ ...counts, [application.status]: counts[application.status] + 1 }), { pending: 0, standby: 0, booked: 0, rejected: 0 }), [apps]);
   const bookingBrief = bookingApp ? briefs.find((brief) => brief.id === bookingApp.briefId) : undefined;
   const bookingActor = bookingApp ? actors[bookingApp.actorUid] : undefined;
 
@@ -102,23 +118,65 @@ export default function ApplicationsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl">
-      <header>
-        <p className="text-sm font-bold tracking-[0.18em] text-brand-blue">APPLICATIONS</p>
-        <h1 className="mt-1 text-3xl font-bold">Make the casting call.</h1>
-        <p className="mt-2 text-slate-600">Open a complete actor dossier, view every portfolio image, then confirm the booking.</p>
+    <div className="mx-auto max-w-7xl">
+      <header className="flex flex-wrap items-end justify-between gap-4 pt-1">
+        <div>
+          <p className="text-sm font-bold tracking-[0.18em] text-brand-blue">APPLICATIONS</p>
+          <h1 className="mt-1 text-2xl font-bold leading-tight sm:text-3xl">Make the casting call.</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">Open a complete actor dossier, view every portfolio image, then confirm the booking.</p>
+        </div>
+        <div className="grid w-full grid-cols-4 gap-2 rounded-2xl bg-white p-2 shadow-sm ring-1 ring-brand-silver/70 sm:w-auto">
+          <MiniStat label="New" value={statusCounts.pending} tone="text-brand-blue" />
+          <MiniStat label="Standby" value={statusCounts.standby} tone="text-amber-600" />
+          <MiniStat label="Booked" value={statusCounts.booked} tone="text-emerald-600" />
+          <MiniStat label="Rejected" value={statusCounts.rejected} tone="text-red-600" />
+        </div>
       </header>
-      <section className="mt-7 space-y-6">
-        {groups.map(({ brief, entries }) => (
-          <article key={brief.id} className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-brand-silver/70 sm:p-7">
-            <p className="text-sm font-bold text-brand-blue">{entries.length} application{entries.length === 1 ? "" : "s"}</p>
-            <h2 className="mt-1 text-xl font-bold">{brief.title}</h2>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {entries.map((application) => <ActorCard key={application.id} application={application} actor={actors[application.actorUid]} open={() => setActive(application)} />)}
-            </div>
-          </article>
-        ))}
-        {!groups.length && (
+
+      <section className="mt-7 rounded-[28px] bg-white p-4 shadow-sm ring-1 ring-brand-silver/70 sm:p-5">
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          <button type="button" onClick={() => setSelectedBriefId("all")} className={`min-h-11 shrink-0 rounded-xl px-4 text-sm font-bold ${selectedBriefId === "all" ? "bg-brand-navy text-white" : "bg-brand-ice text-brand-navy"}`}>All briefs <span className="ml-2 opacity-70">{apps.length}</span></button>
+          {groups.map(({ brief, entries }) => (
+            <button key={brief.id} type="button" onClick={() => setSelectedBriefId(brief.id)} className={`min-h-11 shrink-0 rounded-xl px-4 text-sm font-bold ${selectedBriefId === brief.id ? "bg-brand-navy text-white" : "bg-brand-ice text-brand-navy"}`}>
+              {brief.title}<span className="ml-2 opacity-70">{entries.length}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto]">
+          <label className="relative block">
+            <Search className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search applicant, availability, or brief" className="min-h-12 w-full rounded-2xl border border-slate-200 bg-brand-ice pl-12 pr-4 text-sm outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
+          </label>
+          <div className="grid grid-cols-5 rounded-2xl bg-brand-ice p-1">
+            {(["all", "pending", "standby", "booked", "rejected"] as const).map((status) => (
+              <button key={status} type="button" onClick={() => setStatusFilter(status)} className={`min-h-10 rounded-xl px-2 text-xs font-bold capitalize ${statusFilter === status ? "bg-white text-brand-navy shadow-sm" : "text-slate-500"}`}>
+                {status === "pending" ? "New" : status}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="mt-5 rounded-[28px] bg-white p-4 shadow-sm ring-1 ring-brand-silver/70 sm:p-5">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-bold text-brand-blue">{filteredApps.length} visible</p>
+            <h2 className="mt-1 text-xl font-bold text-brand-navy">{activeBrief?.title || "All applications"}</h2>
+          </div>
+          <div className="flex items-center gap-2 rounded-full bg-brand-ice px-3 py-1.5 text-sm font-bold text-brand-navy"><LayoutGrid className="size-4 text-brand-blue" />Review board</div>
+        </div>
+        {filteredApps.length ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {filteredApps.map((application) => <ActorCard key={application.id} application={application} actor={actors[application.actorUid]} open={() => setActive(application)} />)}
+          </div>
+        ) : groups.length ? (
+          <div className="rounded-2xl border-2 border-dashed border-brand-silver bg-brand-ice/40 p-10 text-center">
+            <Search className="mx-auto size-8 text-brand-blue" />
+            <h2 className="mt-4 text-xl font-bold text-brand-navy">No matching applications</h2>
+            <p className="mt-2 text-sm text-slate-600">Adjust the brief, status, or search filter.</p>
+          </div>
+        ) : (
           <div className="rounded-3xl border-2 border-dashed border-brand-silver bg-white p-10 text-center">
             <ClipboardCheck className="mx-auto size-9 text-brand-blue" />
             <h2 className="mt-4 text-xl font-bold">No applications yet</h2>
@@ -140,6 +198,15 @@ export default function ApplicationsPage() {
           onConfirm={() => void persistDecision(bookingApp, "booked")}
         />
       )}
+    </div>
+  );
+}
+
+function MiniStat({ label, value, tone }: { label: string; value: number; tone: string }) {
+  return (
+    <div className="min-w-16 rounded-xl bg-brand-ice px-3 py-2 text-center">
+      <p className={`text-xl font-black ${tone}`}>{value}</p>
+      <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{label}</p>
     </div>
   );
 }
@@ -273,22 +340,17 @@ function StatusBadge({ status }: { status: Status }) {
 
 async function loadActor(uid: string): Promise<Actor> {
   const snapshot = await getDoc(doc(db, "actors", uid));
-  const data = snapshot.data();
+  const data = normalizeActorProfile(snapshot.data());
   return {
-    fullName: typeof data?.fullName === "string" ? data.fullName : "Unnamed actor",
-    stageName: typeof data?.stageName === "string" ? data.stageName : "",
-    bio: typeof data?.bio === "string" ? data.bio : "",
-    headshot: typeof data?.headshot === "string" ? data.headshot : "",
-    heightCm: typeof data?.heightCm === "string" ? data.heightCm : "",
-    hairColor: typeof data?.hairColor === "string" ? data.hairColor : "",
-    eyeColor: typeof data?.eyeColor === "string" ? data.eyeColor : "",
-    ageRange: typeof data?.ageRange === "string" ? data.ageRange : "",
-    availabilityStatus: typeof data?.availabilityStatus === "string" ? data.availabilityStatus : "",
-    albums: {
-      Formal: Array.isArray(data?.albums?.Formal) ? data.albums.Formal : [],
-      Casual: Array.isArray(data?.albums?.Casual) ? data.albums.Casual : [],
-      Commercial: Array.isArray(data?.albums?.Commercial) ? data.albums.Commercial : [],
-      Fitness: Array.isArray(data?.albums?.Fitness) ? data.albums.Fitness : [],
-    },
+    fullName: data.fullName || "Unnamed actor",
+    stageName: data.stageName,
+    bio: data.bio,
+    headshot: data.headshot,
+    heightCm: data.heightCm,
+    hairColor: data.hairColor,
+    eyeColor: data.eyeColor,
+    ageRange: data.ageRange,
+    availabilityStatus: data.availabilityStatus,
+    albums: data.albums,
   };
 }

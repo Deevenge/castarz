@@ -40,24 +40,19 @@ export default function AlbumsPage() {
     await setDoc(doc(db, "actors", user.uid), { albums, updatedAt: serverTimestamp() }, { merge: true });
   }
 
-  async function upload(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? []);
-    if (!files.length) return;
-    const remainingSlots = maxPhotosPerCategory - actor.albums[category].length;
-    if (remainingSlots <= 0) {
-      setNotice(`${category} already has its headshot and full length photo.`);
-      event.target.value = "";
-      return;
-    }
+  async function upload(event: ChangeEvent<HTMLInputElement>, slotIndex: number) {
+    const file = event.target.files?.[0];
+    if (!file) return;
     setUploading(true);
     setNotice("");
     try {
-      const selected = files.slice(0, remainingSlots);
-      const compressed = await Promise.all(selected.map(compressImageToDataUrl));
-      const next = { ...actor, albums: { ...actor.albums, [category]: [...actor.albums[category], ...compressed].slice(0, maxPhotosPerCategory) } };
+      const compressed = await compressImageToDataUrl(file);
+      const categoryPhotos = [...actor.albums[category]];
+      categoryPhotos[slotIndex] = compressed;
+      const next = { ...actor, albums: { ...actor.albums, [category]: categoryPhotos.slice(0, maxPhotosPerCategory) } };
       setActor(next);
       await persist(next);
-      setNotice(files.length > remainingSlots ? `${compressed.length} photo${compressed.length > 1 ? "s" : ""} added to ${category}. Each category is limited to 2.` : `${compressed.length} photo${compressed.length > 1 ? "s" : ""} added to ${category}.`);
+      setNotice(`${photoSlotLabels[slotIndex]} saved to ${category}.`);
     } catch {
       setNotice("One or more photos could not be uploaded. Please try again.");
     } finally {
@@ -78,7 +73,6 @@ export default function AlbumsPage() {
 
   if (loading) return <div className="flex min-h-[40vh] items-center justify-center"><LoaderCircle className="size-7 animate-spin text-brand-blue" /></div>;
   const photos = actor.albums[category];
-  const remainingSlots = maxPhotosPerCategory - photos.length;
 
   return (
     <section className="rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-brand-silver/70 sm:p-6">
@@ -94,17 +88,19 @@ export default function AlbumsPage() {
           <h2 className="text-xl font-bold">{category}</h2>
           <p className="mt-1 text-sm text-slate-600">Keep this category tight: one headshot and one full length photo.</p>
         </div>
-        <label className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold ${remainingSlots > 0 ? "cursor-pointer bg-brand-blue text-white hover:bg-brand-navy" : "cursor-not-allowed bg-slate-100 text-slate-400"}`}>
-          <ImagePlus className="size-4" />{uploading ? "Preparing..." : remainingSlots > 0 ? `Add ${remainingSlots}` : "Complete"}
-          <input type="file" accept="image/*" multiple disabled={uploading || remainingSlots <= 0} onChange={upload} className="sr-only" />
-        </label>
+        <span className="rounded-full bg-brand-ice px-3 py-1.5 text-xs font-black uppercase tracking-[0.12em] text-brand-navy">2 max</span>
       </div>
-      <div className="mt-5 grid grid-cols-2 gap-3">
+      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {photoSlotLabels.map((label, index) => (
-          <div key={label} className={`rounded-2xl border p-3 ${photos[index] ? "border-brand-silver bg-white" : "border-dashed border-brand-silver bg-brand-ice/50"}`}>
-            <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-blue">{label}</p>
-            <p className="mt-1 text-xs font-semibold text-slate-500">{photos[index] ? "Uploaded" : "Empty slot"}</p>
-          </div>
+          <label key={label} className={`group relative flex min-h-44 cursor-pointer flex-col justify-between overflow-hidden rounded-2xl border p-4 ${photos[index] ? "border-brand-silver bg-white" : "border-dashed border-brand-silver bg-brand-ice/60 hover:border-brand-blue"}`}>
+            {photos[index] ? <Image src={photos[index]} alt={`${category} ${label}`} fill unoptimized className="object-cover" /> : null}
+            <span className={`relative z-10 inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] ${photos[index] ? "bg-black/45 text-white backdrop-blur" : "bg-white text-brand-blue"}`}>{label}</span>
+            <span className={`relative z-10 flex items-center gap-2 text-sm font-bold ${photos[index] ? "text-white drop-shadow" : "text-brand-navy"}`}>
+              <ImagePlus className="size-5" />{uploading ? "Preparing..." : photos[index] ? "Replace photo" : `Upload ${label.toLowerCase()}`}
+            </span>
+            <input type="file" accept="image/*" disabled={uploading} onChange={(event) => void upload(event, index)} className="sr-only" />
+            {photos[index] && <span className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/10" />}
+          </label>
         ))}
       </div>
       {notice && <p className="mt-4 rounded-xl bg-brand-ice px-4 py-3 text-sm font-semibold text-brand-navy">{notice}</p>}
