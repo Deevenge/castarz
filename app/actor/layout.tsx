@@ -85,7 +85,6 @@ export default function ActorLayout({ children }: { children: ReactNode }) {
             {unreadCount > 0 && <span className="absolute right-2 top-2 size-2 rounded-full bg-brand-blue" />}
           </Link>
         }
-        onSignOut={() => void handleSignOut()}
       />
       <main className="mx-auto min-h-dvh max-w-6xl px-4 py-6 pb-28 sm:px-7 lg:ml-72 lg:max-w-none lg:px-10 lg:py-10 lg:pb-10">{children}</main>
       <nav className="fixed inset-x-0 bottom-0 z-40 flex h-[76px] items-center justify-around border-t border-brand-silver/70 bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden" aria-label="Actor navigation">

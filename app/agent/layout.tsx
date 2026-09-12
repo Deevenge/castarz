@@ -95,7 +95,6 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
             <UnreadDot count={unreadCount} />
           </Link>
         }
-        onSignOut={() => void handleSignOut()}
       />
 
       <main className="min-h-dvh px-4 py-6 pb-28 sm:px-7 lg:ml-72 lg:px-10 lg:py-10 lg:pb-10">{children}</main>

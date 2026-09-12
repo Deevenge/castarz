@@ -43,11 +43,16 @@ export default function AlbumsPage() {
   async function upload(event: ChangeEvent<HTMLInputElement>, slotIndex: number) {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (slotIndex === 1 && !actor.albums[category][0]) {
+      setNotice(`Add the ${category} headshot before the full length photo.`);
+      event.target.value = "";
+      return;
+    }
     setUploading(true);
     setNotice("");
     try {
       const compressed = await compressImageToDataUrl(file);
-      const categoryPhotos = [...actor.albums[category]];
+      const categoryPhotos = [...actor.albums[category].slice(0, maxPhotosPerCategory)];
       categoryPhotos[slotIndex] = compressed;
       const next = { ...actor, albums: { ...actor.albums, [category]: categoryPhotos.slice(0, maxPhotosPerCategory) } };
       setActor(next);
@@ -92,36 +97,25 @@ export default function AlbumsPage() {
       </div>
       <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {photoSlotLabels.map((label, index) => (
-          <label key={label} className={`group relative flex min-h-44 cursor-pointer flex-col justify-between overflow-hidden rounded-2xl border p-4 ${photos[index] ? "border-brand-silver bg-white" : "border-dashed border-brand-silver bg-brand-ice/60 hover:border-brand-blue"}`}>
-            {photos[index] ? <Image src={photos[index]} alt={`${category} ${label}`} fill unoptimized className="object-cover" /> : null}
-            <span className={`relative z-10 inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] ${photos[index] ? "bg-black/45 text-white backdrop-blur" : "bg-white text-brand-blue"}`}>{label}</span>
-            <span className={`relative z-10 flex items-center gap-2 text-sm font-bold ${photos[index] ? "text-white drop-shadow" : "text-brand-navy"}`}>
-              <ImagePlus className="size-5" />{uploading ? "Preparing..." : photos[index] ? "Replace photo" : `Upload ${label.toLowerCase()}`}
-            </span>
-            <input type="file" accept="image/*" disabled={uploading} onChange={(event) => void upload(event, index)} className="sr-only" />
-            {photos[index] && <span className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/10" />}
-          </label>
+          <div key={label} className={`group relative min-h-44 overflow-hidden rounded-2xl border ${photos[index] ? "border-brand-silver bg-white" : "border-dashed border-brand-silver bg-brand-ice/60 hover:border-brand-blue"}`}>
+            <label className="absolute inset-0 flex cursor-pointer flex-col justify-between p-4">
+              {photos[index] ? <Image src={photos[index]} alt={`${category} ${label}`} fill unoptimized className="object-cover" /> : null}
+              <span className={`relative z-10 inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] ${photos[index] ? "bg-black/45 text-white backdrop-blur" : "bg-white text-brand-blue"}`}>{label}</span>
+              <span className={`relative z-10 flex items-center gap-2 text-sm font-bold ${photos[index] ? "text-white drop-shadow" : "text-brand-navy"}`}>
+                <ImagePlus className="size-5" />{uploading ? "Preparing..." : photos[index] ? "Replace photo" : `Upload ${label.toLowerCase()}`}
+              </span>
+              <input type="file" accept="image/*" disabled={uploading} onChange={(event) => void upload(event, index)} className="sr-only" />
+              {photos[index] && <span className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/10" />}
+            </label>
+            {photos[index] && (
+              <button type="button" onClick={() => void remove(index)} className="absolute right-3 top-3 z-20 flex size-9 items-center justify-center rounded-full bg-white/90 text-red-600 shadow-sm" aria-label={`Remove ${label}`}>
+                <Trash2 className="size-4" />
+              </button>
+            )}
+          </div>
         ))}
       </div>
       {notice && <p className="mt-4 rounded-xl bg-brand-ice px-4 py-3 text-sm font-semibold text-brand-navy">{notice}</p>}
-      <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {photos.map((photo, index) => (
-          <figure key={`${photo.slice(-24)}-${index}`} className="group relative aspect-square overflow-hidden rounded-2xl bg-brand-ice">
-            <Image src={photo} alt={`${category} portfolio photo ${index + 1}`} fill unoptimized className="object-cover" />
-            <figcaption className="absolute left-2 top-2 rounded-full bg-black/45 px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-white backdrop-blur">{photoSlotLabels[index] ?? "Photo"}</figcaption>
-            <button type="button" onClick={() => remove(index)} className="absolute right-2 top-2 flex size-9 items-center justify-center rounded-full bg-white/90 text-red-600 shadow-sm" aria-label="Remove photo">
-              <Trash2 className="size-4" />
-            </button>
-          </figure>
-        ))}
-        {photos.length === 0 && (
-          <div className="col-span-full flex min-h-48 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-brand-silver bg-brand-ice/50 text-center">
-            <ImagePlus className="size-8 text-brand-blue" />
-            <p className="mt-3 font-bold text-brand-navy">Your {category.toLowerCase()} album is empty</p>
-            <p className="mt-1 px-5 text-sm text-slate-600">Add clear, recent photos that show this side of your look.</p>
-          </div>
-        )}
-      </div>
     </section>
   );
 }

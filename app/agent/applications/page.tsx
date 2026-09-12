@@ -167,9 +167,12 @@ export default function ApplicationsPage() {
           <div className="flex items-center gap-2 rounded-full bg-brand-ice px-3 py-1.5 text-sm font-bold text-brand-navy"><LayoutGrid className="size-4 text-brand-blue" />Review board</div>
         </div>
         {filteredApps.length ? (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {filteredApps.map((application) => <ActorCard key={application.id} application={application} actor={actors[application.actorUid]} open={() => setActive(application)} />)}
-          </div>
+          <>
+            <ApplicantStoryRail applications={filteredApps} actors={actors} open={setActive} />
+            <div className="hidden gap-3 md:grid md:grid-cols-2 xl:grid-cols-3">
+              {filteredApps.map((application) => <ActorCard key={application.id} application={application} actor={actors[application.actorUid]} open={() => setActive(application)} />)}
+            </div>
+          </>
         ) : groups.length ? (
           <div className="rounded-2xl border-2 border-dashed border-brand-silver bg-brand-ice/40 p-10 text-center">
             <Search className="mx-auto size-8 text-brand-blue" />
@@ -211,6 +214,33 @@ function MiniStat({ label, value, tone }: { label: string; value: number; tone: 
   );
 }
 
+function ApplicantStoryRail({ applications, actors, open }: { applications: Application[]; actors: Record<string, Actor>; open: (application: Application) => void }) {
+  return (
+    <div className="md:hidden">
+      <div className="flex gap-4 overflow-x-auto pb-2">
+        {applications.map((application) => {
+          const actor = actors[application.actorUid];
+          return (
+            <div key={application.id} className="w-20 shrink-0 text-center">
+              <button type="button" onClick={() => open(application)} className={`relative mx-auto flex size-16 items-center justify-center rounded-full p-0.5 ${statusRing(application.status)}`} aria-label={`Review ${actor?.stageName || actor?.fullName || "actor"}`}>
+                <span className="flex size-full items-center justify-center overflow-hidden rounded-full bg-white p-0.5">
+                  <span className="flex size-full items-center justify-center overflow-hidden rounded-full bg-brand-ice text-brand-blue">
+                    {actor?.headshot ? <Image src={actor.headshot} alt="" width={64} height={64} unoptimized className="size-full object-cover" /> : <UserRound className="size-6" />}
+                  </span>
+                </span>
+                <span className="absolute -bottom-1 rounded-full bg-white px-1.5 py-0.5 text-[9px] font-black uppercase text-brand-navy shadow-sm ring-1 ring-brand-silver">{application.status === "pending" ? "New" : application.status}</span>
+              </button>
+              <p className="mt-2 truncate text-xs font-bold text-brand-navy">{actor?.stageName || actor?.fullName || "Actor"}</p>
+              <Link href={`/agent/talent/${application.actorUid}`} className="mt-0.5 block text-[11px] font-bold text-brand-blue">Profile</Link>
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-2 rounded-2xl bg-brand-ice px-3 py-2 text-xs font-semibold text-slate-600">Tap a circle to review. Open Profile for the full actor page.</p>
+    </div>
+  );
+}
+
 function ActorCard({ application, actor, open }: { application: Application; actor?: Actor; open: () => void }) {
   return (
     <div className="group rounded-2xl border border-slate-200 bg-white p-3 transition hover:-translate-y-0.5 hover:border-brand-blue hover:shadow-lg hover:shadow-brand-navy/10">
@@ -222,11 +252,18 @@ function ActorCard({ application, actor, open }: { application: Application; act
         </span>
         <StatusBadge status={application.status} />
       </Link>
-      <button type="button" onClick={open} className="mt-3 flex min-h-10 w-full items-center justify-center rounded-xl bg-brand-navy text-sm font-bold text-white hover:bg-brand-blue">
+      <button type="button" onClick={open} className="mt-3 inline-flex min-h-9 items-center justify-center rounded-xl bg-brand-navy px-4 text-xs font-bold text-white hover:bg-brand-blue">
         Review application
       </button>
     </div>
   );
+}
+
+function statusRing(status: Status) {
+  if (status === "booked") return "bg-emerald-500";
+  if (status === "standby") return "bg-amber-500";
+  if (status === "rejected") return "bg-red-500";
+  return "bg-brand-blue";
 }
 
 function ActorDossier({ application, actor, close, working, decide }: { application: Application; actor?: Actor; close: () => void; working: boolean; decide: (app: Application, status: Status) => void }) {
