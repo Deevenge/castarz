@@ -3,6 +3,7 @@
 import imageCompression from "browser-image-compression";
 
 export const albumCategories = ["Formal", "Casual", "Commercial", "Fitness"] as const;
+export const maxPhotosPerAlbumCategory = 2;
 export type AlbumCategory = (typeof albumCategories)[number];
 export type AvailabilityStatus = "Available" | "Limited availability" | "Unavailable";
 
@@ -55,9 +56,10 @@ export async function compressImageToDataUrl(file: File): Promise<string> {
 }
 
 export function normalizeActorProfile(data: Partial<ActorProfile> | undefined): ActorProfile {
+  const albums = { ...emptyActorProfile.albums, ...data?.albums };
   return {
     ...emptyActorProfile,
     ...data,
-    albums: { ...emptyActorProfile.albums, ...data?.albums },
+    albums: Object.fromEntries(albumCategories.map((category) => [category, (albums[category] ?? []).slice(0, maxPhotosPerAlbumCategory)])) as ActorProfile["albums"],
   };
 }

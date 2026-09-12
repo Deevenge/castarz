@@ -177,13 +177,13 @@ function ActorDossier({ application, actor, close, working, decide }: { applicat
           </div>
           <button onClick={close} className="flex size-10 items-center justify-center rounded-full hover:bg-slate-100" aria-label="Close profile"><X className="size-5" /></button>
         </header>
-        <div className="mt-6 grid gap-6 md:grid-cols-[180px_1fr]">
-          <div className="flex aspect-[3/4] items-center justify-center overflow-hidden rounded-3xl bg-brand-ice">
+        <div className="mt-6 grid grid-cols-[108px_1fr] gap-4 sm:grid-cols-[140px_1fr] md:grid-cols-[180px_1fr] md:gap-6">
+          <div className="flex h-36 items-center justify-center overflow-hidden rounded-2xl bg-brand-ice sm:h-44 md:aspect-[3/4] md:h-auto md:rounded-3xl">
             {actor?.headshot ? <Image src={actor.headshot} alt="Actor headshot" width={360} height={480} unoptimized className="size-full object-cover" /> : <UserRound className="size-12 text-brand-blue" />}
           </div>
-          <div>
-            <p className="leading-7 text-slate-600">{actor?.bio || "No bio added yet."}</p>
-            <div className="mt-5 flex flex-wrap gap-2">{[actor?.ageRange, actor?.heightCm && `${actor.heightCm} cm`, actor?.hairColor, actor?.eyeColor, actor?.availabilityStatus].filter(Boolean).map((item) => <span key={item} className="rounded-full bg-brand-ice px-3 py-1.5 text-sm font-bold text-brand-navy">{item}</span>)}</div>
+          <div className="min-w-0 self-center">
+            <p className="line-clamp-4 text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">{actor?.bio || "No bio added yet."}</p>
+            <div className="mt-4 flex flex-wrap gap-2">{[actor?.ageRange, actor?.heightCm && `${actor.heightCm} cm`, actor?.hairColor, actor?.eyeColor, actor?.availabilityStatus].filter(Boolean).map((item) => <span key={item} className="rounded-full bg-brand-ice px-3 py-1.5 text-xs font-bold text-brand-navy sm:text-sm">{item}</span>)}</div>
           </div>
         </div>
         <section className="mt-8">
@@ -194,18 +194,30 @@ function ActorDossier({ application, actor, close, working, decide }: { applicat
             </div>
             <span className="rounded-full bg-brand-ice px-3 py-1.5 text-sm font-bold text-brand-navy">{photos.length} photos</span>
           </div>
-          <div className="mt-5">
-            {photos.length > 0 && (
-              <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-5">
-                {photos.map((photo, index) => (
-                  <button type="button" key={`${photo.source.slice(-24)}-${index}`} onClick={() => setViewer(index)} className="group relative aspect-square overflow-hidden bg-brand-ice">
-                    <Image src={photo.source} alt={`${photo.category} portfolio photo`} fill unoptimized className="object-cover transition duration-300 group-hover:scale-105" />
-                    <span className="absolute left-2 top-2 rounded-full bg-black/45 px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-white backdrop-blur">{photo.category}</span>
-                    <span className="absolute inset-0 flex items-center justify-center bg-brand-navy/0 text-white transition group-hover:bg-brand-navy/35"><ZoomIn className="size-7 opacity-0 transition group-hover:opacity-100" /></span>
-                  </button>
-                ))}
-              </div>
-            )}
+          <div className="mt-5 space-y-6">
+            {albumCategories.map((category) => {
+              const categoryPhotos = photos.filter((photo) => photo.category === category);
+              if (!categoryPhotos.length) return null;
+              return (
+                <div key={category}>
+                  <div className="mb-3 flex items-center gap-2">
+                    <h4 className="text-xs font-black uppercase tracking-[0.16em] text-brand-blue">{category}</h4>
+                    <span className="rounded-full bg-brand-ice px-2 py-0.5 text-[11px] font-bold text-brand-navy">{categoryPhotos.length}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-4">
+                    {categoryPhotos.map((photo) => {
+                      const index = photos.findIndex((item) => item.source === photo.source);
+                      return (
+                        <button type="button" key={`${photo.source.slice(-24)}-${index}`} onClick={() => setViewer(index)} className="group relative aspect-square overflow-hidden rounded-xl bg-brand-ice sm:rounded-2xl">
+                          <Image src={photo.source} alt={`${photo.category} portfolio photo`} fill unoptimized className="object-cover transition duration-300 group-hover:scale-105" />
+                          <span className="absolute inset-0 flex items-center justify-center bg-brand-navy/0 text-white transition group-hover:bg-brand-navy/35"><ZoomIn className="size-7 opacity-0 transition group-hover:opacity-100" /></span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
             {!photos.length && <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">No portfolio photos uploaded yet.</p>}
           </div>
         </section>
