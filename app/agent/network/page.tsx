@@ -2,8 +2,10 @@
 
 import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { Check, CheckCircle2, Grid3X3, LoaderCircle, Search, ShieldCheck, Sparkles, UserPlus, UsersRound, X } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { PhotoLightbox } from "@/components/ProfileChrome";
 import { SocialPostComposer } from "@/components/SocialPostComposer";
 import { SocialPostGrid } from "@/components/SocialPostGrid";
 import { useAuth } from "@/context/AuthContext";
@@ -227,23 +229,31 @@ function EmptyDrawerState({ icon: Icon, title, copy }: { icon: typeof UserPlus; 
 }
 
 function SearchActorCard({ actor }: { actor: DirectoryActor }) {
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const name = actorDisplayName(actor);
+
   return (
-    <Link href={`/agent/talent/${actor.uid}`} className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-brand-silver/70 transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-brand-navy/10">
+    <article className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-brand-silver/70 transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-brand-navy/10">
       <div className="aspect-[4/3] bg-brand-ice">
-        {actor.headshot ? <img src={actor.headshot} alt="" className="size-full object-cover" /> : <div className="flex size-full items-center justify-center text-brand-blue"><UsersRound className="size-9" /></div>}
+        {actor.headshot ? (
+          <button type="button" onClick={() => setViewerOpen(true)} className="relative flex size-full cursor-zoom-in items-center justify-center" aria-label={`View ${name} profile photo`}>
+            <Image src={actor.headshot} alt="" fill unoptimized className="object-contain object-top" />
+          </button>
+        ) : <div className="flex size-full items-center justify-center text-brand-blue"><UsersRound className="size-9" /></div>}
       </div>
-      <div className="p-4">
-        <p className="truncate font-bold text-brand-navy">{actorDisplayName(actor)}</p>
+      <Link href={`/agent/talent/${actor.uid}`} className="block p-4 hover:bg-brand-ice/60">
+        <p className="truncate font-bold text-brand-navy">{name}</p>
         <p className="mt-1 truncate text-sm text-slate-500">{actor.availabilityStatus}{actor.ageRange ? ` · ${actor.ageRange}` : ""}</p>
-      </div>
-    </Link>
+      </Link>
+      {actor.headshot && viewerOpen && <PhotoLightbox photo={actor.headshot} label={`${name} profile photo`} close={() => setViewerOpen(false)} />}
+    </article>
   );
 }
 
 function ActorRow({ actor, actions }: { actor?: ActorCard; actions?: React.ReactNode }) {
   const body = (
     <div className="flex min-w-0 items-center gap-3">
-      <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-brand-navy text-brand-cyan">{actor?.headshot ? <img src={actor.headshot} alt="" className="size-full object-cover" /> : <UsersRound className="size-5" />}</div>
+      <div className="relative flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-brand-navy text-brand-cyan">{actor?.headshot ? <Image src={actor.headshot} alt="" fill unoptimized className="object-cover object-top" /> : <UsersRound className="size-5" />}</div>
       <div className="min-w-0">
         <p className="truncate font-bold text-brand-navy">{actor?.stageName || actor?.fullName || "Loading actor..."}</p>
         <p className="text-sm text-slate-500">{actor?.availabilityStatus || "Loading availability..."}</p>

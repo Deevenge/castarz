@@ -99,7 +99,7 @@ export default function AlbumsPage() {
         {photoSlotLabels.map((label, index) => (
           <div key={label} className={`group relative min-h-44 overflow-hidden rounded-2xl border ${photos[index] ? "border-brand-silver bg-white" : "border-dashed border-brand-silver bg-brand-ice/60 hover:border-brand-blue"}`}>
             <label className="absolute inset-0 flex cursor-pointer flex-col justify-between p-4">
-              {photos[index] ? <Image src={photos[index]} alt={`${category} ${label}`} fill unoptimized className="object-cover" /> : null}
+              {photos[index] ? <Image src={photos[index]} alt={`${category} ${label}`} fill unoptimized className="object-contain object-top" /> : null}
               <span className={`relative z-10 inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] ${photos[index] ? "bg-black/45 text-white backdrop-blur" : "bg-white text-brand-blue"}`}>{label}</span>
               <span className={`relative z-10 flex items-center gap-2 text-sm font-bold ${photos[index] ? "text-white drop-shadow" : "text-brand-navy"}`}>
                 <ImagePlus className="size-5" />{uploading ? "Preparing..." : photos[index] ? "Replace photo" : `Upload ${label.toLowerCase()}`}

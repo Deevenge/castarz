@@ -52,14 +52,14 @@ export default function ActorAccountLayout({ children }: { children: ReactNode }
     <div className="mx-auto max-w-3xl">
       <section className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-brand-silver/70">
         <div className="relative h-44 bg-gradient-to-br from-brand-navy via-brand-blue to-[#8eb0ff] sm:h-52">
-          {cover ? <Image src={cover} alt="" fill unoptimized className="object-cover" /> : null}
+          {cover ? <Image src={cover} alt="" fill unoptimized className="object-contain object-top" /> : null}
           <div className="absolute inset-0 bg-gradient-to-t from-brand-navy/50 via-transparent to-black/10" />
         </div>
         <div className="px-4 sm:px-6">
           <div className="relative -mt-14 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex items-end gap-3">
               <label className="relative size-28 shrink-0 cursor-pointer overflow-hidden rounded-full bg-brand-ice ring-4 ring-white sm:size-32">
-                {actor.headshot ? <Image src={actor.headshot} alt={name} fill unoptimized className="object-cover" /> : <span className="flex size-full items-center justify-center text-3xl font-extrabold text-brand-blue">{name.slice(0, 1).toUpperCase()}</span>}
+                {actor.headshot ? <Image src={actor.headshot} alt={name} fill unoptimized className="object-cover object-top" /> : <span className="flex size-full items-center justify-center text-3xl font-extrabold text-brand-blue">{name.slice(0, 1).toUpperCase()}</span>}
                 <span className="absolute bottom-1 right-1 flex size-9 items-center justify-center rounded-full bg-brand-navy text-white shadow-md">
                   {uploading ? <LoaderCircle className="size-4 animate-spin" /> : <Camera className="size-4" />}
                 </span>

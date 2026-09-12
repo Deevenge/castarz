@@ -6,6 +6,7 @@ import Link from "next/link";
 import { CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, Download, ExternalLink, LayoutGrid, LoaderCircle, Maximize2, Search, UserRound, X, XCircle, ZoomIn } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { BookingConfirmDialog } from "@/components/BookingConfirmDialog";
+import { PhotoLightbox } from "@/components/ProfileChrome";
 import { useAuth } from "@/context/AuthContext";
 import { briefFromDocument, type AgentBrief } from "@/lib/agent-data";
 import { db } from "@/lib/firebase";
@@ -269,22 +270,30 @@ function statusRing(status: Status) {
 function ActorDossier({ application, actor, close, working, decide }: { application: Application; actor?: Actor; close: () => void; working: boolean; decide: (app: Application, status: Status) => void }) {
   const photos = albumCategories.flatMap((category) => (actor?.albums?.[category] ?? []).map((source) => ({ category, source })));
   const [viewer, setViewer] = useState<number | null>(null);
+  const [headshotOpen, setHeadshotOpen] = useState(false);
   const activePhoto = viewer === null ? null : photos[viewer];
+  const actorName = actor?.stageName || actor?.fullName || "Actor";
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-brand-navy/50 p-0 backdrop-blur-sm sm:items-center sm:justify-center sm:p-6">
       <section className="max-h-[94dvh] w-full max-w-5xl overflow-y-auto rounded-t-3xl bg-white p-5 sm:rounded-3xl sm:p-8">
         <header className="flex justify-between gap-4">
           <div>
             <p className="text-sm font-bold tracking-[0.16em] text-brand-blue">ACTOR DOSSIER</p>
-            <h2 className="mt-1 text-2xl font-bold text-brand-navy">{actor?.stageName || actor?.fullName || "Actor profile"}</h2>
+            <h2 className="mt-1 text-2xl font-bold text-brand-navy">{actorName}</h2>
             <div className="mt-3"><StatusBadge status={application.status} /></div>
           </div>
           <button onClick={close} className="flex size-10 items-center justify-center rounded-full hover:bg-slate-100" aria-label="Close profile"><X className="size-5" /></button>
         </header>
         <div className="mt-6 grid grid-cols-[108px_1fr] gap-4 sm:grid-cols-[140px_1fr] md:grid-cols-[180px_1fr] md:gap-6">
-          <div className="flex h-36 items-center justify-center overflow-hidden rounded-2xl bg-brand-ice sm:h-44 md:aspect-[3/4] md:h-auto md:rounded-3xl">
-            {actor?.headshot ? <Image src={actor.headshot} alt="Actor headshot" width={360} height={480} unoptimized className="size-full object-cover" /> : <UserRound className="size-12 text-brand-blue" />}
-          </div>
+          {actor?.headshot ? (
+            <button type="button" onClick={() => setHeadshotOpen(true)} className="flex h-36 cursor-zoom-in items-center justify-center overflow-hidden rounded-2xl bg-brand-ice sm:h-44 md:aspect-[3/4] md:h-auto md:rounded-3xl" aria-label={`View ${actorName} profile photo`}>
+              <Image src={actor.headshot} alt="Actor headshot" width={360} height={480} unoptimized className="size-full object-contain object-top" />
+            </button>
+          ) : (
+            <div className="flex h-36 items-center justify-center overflow-hidden rounded-2xl bg-brand-ice sm:h-44 md:aspect-[3/4] md:h-auto md:rounded-3xl">
+              <UserRound className="size-12 text-brand-blue" />
+            </div>
+          )}
           <div className="min-w-0 self-center">
             <p className="line-clamp-4 text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">{actor?.bio || "No bio added yet."}</p>
             <div className="mt-4 flex flex-wrap gap-2">{[actor?.ageRange, actor?.heightCm && `${actor.heightCm} cm`, actor?.hairColor, actor?.eyeColor, actor?.availabilityStatus].filter(Boolean).map((item) => <span key={item} className="rounded-full bg-brand-ice px-3 py-1.5 text-xs font-bold text-brand-navy sm:text-sm">{item}</span>)}</div>
@@ -313,7 +322,7 @@ function ActorDossier({ application, actor, close, working, decide }: { applicat
                       const index = photos.findIndex((item) => item.source === photo.source);
                       return (
                         <button type="button" key={`${photo.source.slice(-24)}-${index}`} onClick={() => setViewer(index)} className="group relative aspect-square overflow-hidden rounded-xl bg-brand-ice sm:rounded-2xl">
-                          <Image src={photo.source} alt={`${photo.category} portfolio photo`} fill unoptimized className="object-cover transition duration-300 group-hover:scale-105" />
+                          <Image src={photo.source} alt={`${photo.category} portfolio photo`} fill unoptimized className="object-contain object-top transition duration-300 group-hover:scale-105" />
                           <span className="absolute inset-0 flex items-center justify-center bg-brand-navy/0 text-white transition group-hover:bg-brand-navy/35"><ZoomIn className="size-7 opacity-0 transition group-hover:opacity-100" /></span>
                         </button>
                       );
@@ -327,6 +336,7 @@ function ActorDossier({ application, actor, close, working, decide }: { applicat
         </section>
         <DecisionBar current={application.status} working={working} decide={(status) => decide(application, status)} />
       </section>
+      {actor?.headshot && headshotOpen && <PhotoLightbox photo={actor.headshot} label={`${actorName} profile photo`} close={() => setHeadshotOpen(false)} />}
       {activePhoto && <PhotoViewer photo={activePhoto} index={viewer ?? 0} total={photos.length} close={() => setViewer(null)} previous={() => setViewer((current) => current === null ? null : (current - 1 + photos.length) % photos.length)} next={() => setViewer((current) => current === null ? null : (current + 1) % photos.length)} />}
     </div>
   );
