@@ -2,7 +2,8 @@
 
 import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 import Image from "next/image";
-import { CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, Download, LoaderCircle, Maximize2, UserRound, X, XCircle, ZoomIn } from "lucide-react";
+import Link from "next/link";
+import { CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, Download, ExternalLink, LoaderCircle, Maximize2, UserRound, X, XCircle, ZoomIn } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { BookingConfirmDialog } from "@/components/BookingConfirmDialog";
 import { useAuth } from "@/context/AuthContext";
@@ -145,14 +146,19 @@ export default function ApplicationsPage() {
 
 function ActorCard({ application, actor, open }: { application: Application; actor?: Actor; open: () => void }) {
   return (
-    <button type="button" onClick={open} className="group flex items-center gap-3 rounded-2xl border border-slate-200 p-4 text-left transition hover:-translate-y-0.5 hover:border-brand-blue hover:bg-brand-ice">
-      <Avatar actor={actor} />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-bold text-brand-navy">{actor?.stageName || actor?.fullName || "Loading actor…"}</span>
-        <span className="mt-1 block text-sm text-slate-500">Open profile & portfolio</span>
-      </span>
-      <StatusBadge status={application.status} />
-    </button>
+    <div className="group rounded-2xl border border-slate-200 bg-white p-3 transition hover:-translate-y-0.5 hover:border-brand-blue hover:shadow-lg hover:shadow-brand-navy/10">
+      <Link href={`/agent/talent/${application.actorUid}`} className="flex items-center gap-3 rounded-xl p-1 hover:bg-brand-ice">
+        <Avatar actor={actor} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-bold text-brand-navy">{actor?.stageName || actor?.fullName || "Loading actor..."}</span>
+          <span className="mt-1 flex items-center gap-1 text-sm font-semibold text-brand-blue"><ExternalLink className="size-3.5" />View full profile</span>
+        </span>
+        <StatusBadge status={application.status} />
+      </Link>
+      <button type="button" onClick={open} className="mt-3 flex min-h-10 w-full items-center justify-center rounded-xl bg-brand-navy text-sm font-bold text-white hover:bg-brand-blue">
+        Review application
+      </button>
+    </div>
   );
 }
 
@@ -184,30 +190,22 @@ function ActorDossier({ application, actor, close, working, decide }: { applicat
           <div className="flex items-end justify-between gap-3">
             <div>
               <h3 className="text-xl font-bold">Portfolio</h3>
-              <p className="mt-1 text-sm text-slate-600">Click any photo to view it full-screen, browse, zoom, or download.</p>
+              <p className="mt-1 text-sm text-slate-600">A profile-style grid for fast scanning. Open any photo for full-screen review.</p>
             </div>
             <span className="rounded-full bg-brand-ice px-3 py-1.5 text-sm font-bold text-brand-navy">{photos.length} photos</span>
           </div>
-          <div className="mt-5 space-y-7">
-            {albumCategories.map((category) => {
-              const images = actor?.albums?.[category] ?? [];
-              return images.length ? (
-                <div key={category}>
-                  <h4 className="mb-3 text-sm font-bold tracking-[0.12em] text-brand-blue">{category.toUpperCase()} · {images.length}</h4>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                    {images.map((source) => {
-                      const globalIndex = photos.findIndex((photo) => photo.source === source);
-                      return (
-                        <button type="button" key={source} onClick={() => setViewer(globalIndex)} className="group relative aspect-[3/4] overflow-hidden rounded-2xl bg-brand-ice">
-                          <Image src={source} alt={`${category} portfolio photo`} width={320} height={427} unoptimized className="size-full object-cover transition duration-300 group-hover:scale-105" />
-                          <span className="absolute inset-0 flex items-center justify-center bg-brand-navy/0 text-white transition group-hover:bg-brand-navy/40"><ZoomIn className="size-7 opacity-0 transition group-hover:opacity-100" /></span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null;
-            })}
+          <div className="mt-5">
+            {photos.length > 0 && (
+              <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-5">
+                {photos.map((photo, index) => (
+                  <button type="button" key={`${photo.source.slice(-24)}-${index}`} onClick={() => setViewer(index)} className="group relative aspect-square overflow-hidden bg-brand-ice">
+                    <Image src={photo.source} alt={`${photo.category} portfolio photo`} fill unoptimized className="object-cover transition duration-300 group-hover:scale-105" />
+                    <span className="absolute left-2 top-2 rounded-full bg-black/45 px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-white backdrop-blur">{photo.category}</span>
+                    <span className="absolute inset-0 flex items-center justify-center bg-brand-navy/0 text-white transition group-hover:bg-brand-navy/35"><ZoomIn className="size-7 opacity-0 transition group-hover:opacity-100" /></span>
+                  </button>
+                ))}
+              </div>
+            )}
             {!photos.length && <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">No portfolio photos uploaded yet.</p>}
           </div>
         </section>

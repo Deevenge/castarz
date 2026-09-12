@@ -11,6 +11,7 @@ export interface DirectoryAgency {
   email: string;
   username: string;
   description: string;
+  photo: string;
 }
 
 export function directoryActorFromData(uid: string, data: DocumentData | undefined): DirectoryActor {
@@ -24,6 +25,7 @@ export function directoryAgencyFromData(id: string, data: DocumentData | undefin
     email: typeof data?.email === "string" ? data.email : "",
     username: typeof data?.username === "string" ? data.username : "",
     description: typeof data?.description === "string" && data.description.trim() ? data.description : "Casting agency on CASTARZ",
+    photo: typeof data?.photo === "string" ? data.photo : "",
   };
 }
 

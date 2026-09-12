@@ -123,6 +123,7 @@ export default function AgencyPublicPage() {
       <AgencyHeroCard
         name={agency.name}
         username={agency.username}
+        photo={agency.photo}
         backHref="/actor/network"
         actions={
           status === "approved" ? (

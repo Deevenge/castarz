@@ -41,7 +41,11 @@ export function SocialPostComposer({ userUid, role, profile, compact = false }: 
           : typeof data?.fullName === "string" && data.fullName.trim()
             ? data.fullName
             : profile.name || fallbackName;
-      const authorPhoto = typeof data?.headshot === "string" && data.headshot ? data.headshot : profile.photo;
+      const authorPhoto = typeof data?.photo === "string" && data.photo
+        ? data.photo
+        : typeof data?.headshot === "string" && data.headshot
+          ? data.headshot
+          : profile.photo;
 
       await addDoc(collection(db, "posts"), {
         authorUid: userUid,

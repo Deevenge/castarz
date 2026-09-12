@@ -25,12 +25,16 @@ export default function NetworkPage() {
   const [feed, setFeed] = useState<"discover" | "mine">("discover");
   const [panel, setPanel] = useState<"requests" | "approved" | "">("");
   const [agencyName, setAgencyName] = useState("");
+  const [agencyPhoto, setAgencyPhoto] = useState("");
   const [working, setWorking] = useState("");
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
     if (!user) return;
-    const stopAgency = onSnapshot(doc(db, "agencies", user.uid), (snapshot) => setAgencyName(typeof snapshot.data()?.name === "string" ? snapshot.data()?.name : ""));
+    const stopAgency = onSnapshot(doc(db, "agencies", user.uid), (snapshot) => {
+      setAgencyName(typeof snapshot.data()?.name === "string" ? snapshot.data()?.name : "");
+      setAgencyPhoto(typeof snapshot.data()?.photo === "string" ? snapshot.data()?.photo : "");
+    });
     const stopConnections = onSnapshot(query(collection(db, "connections"), where("agencyId", "==", user.uid)), async (snapshot) => {
       const next = snapshot.docs.map((item) => ({ id: item.id, actorUid: item.data().actorUid as string, status: item.data().status as Connection["status"] }));
       setConnections(next);
@@ -117,7 +121,7 @@ export default function NetworkPage() {
 
       <section className="mt-7 grid gap-5 xl:grid-cols-[0.9fr_1.45fr]">
         <div className="space-y-5">
-          <SocialPostComposer userUid={user?.uid ?? ""} role="agent" profile={{ name: agencyName || profile?.email || "CASTARZ Agency", photo: "" }} compact />
+          <SocialPostComposer userUid={user?.uid ?? ""} role="agent" profile={{ name: agencyName || profile?.email || "CASTARZ Agency", photo: agencyPhoto }} compact />
 
           <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-brand-silver/70 sm:p-5">
             <label className="relative block">

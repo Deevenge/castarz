@@ -36,6 +36,7 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
   const { loading, profile, signOut } = useAuth();
   const { unreadCount } = useInbox();
   const [agencyName, setAgencyName] = useState("");
+  const [agencyPhoto, setAgencyPhoto] = useState("");
 
   useEffect(() => {
     if (!loading && profile?.role !== "agent") router.replace(profile ? `/${profile.role}/dashboard` : "/auth");
@@ -46,6 +47,7 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
     return onSnapshot(doc(db, "agencies", profile.uid), (snapshot) => {
       const data = snapshot.data();
       setAgencyName(typeof data?.name === "string" ? data.name : "");
+      setAgencyPhoto(typeof data?.photo === "string" ? data.photo : "");
     });
   }, [profile]);
 
@@ -63,8 +65,10 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
       <aside className="fixed inset-y-0 left-0 hidden w-72 flex-col bg-brand-navy px-5 py-7 text-white lg:flex">
         <div className="rounded-2xl bg-white p-3"><Image src={logo} alt="CASTARZ" className="h-auto w-48" priority /></div>
         <p className="mt-4 text-xs font-bold tracking-[0.2em] text-brand-cyan">AGENCY CONSOLE</p>
-        <div className="mt-10 rounded-2xl border border-white/10 bg-white/10 p-4">
-          <div className="flex size-11 items-center justify-center rounded-2xl bg-brand-cyan font-extrabold text-brand-navy">{(agencyName || profile.email).slice(0, 1).toUpperCase()}</div>
+        <div className="mt-10 rounded-2xl border border-white/10 bg-white/10 p-4 shadow-2xl shadow-black/10">
+          <div className="relative flex size-12 items-center justify-center overflow-hidden rounded-2xl bg-brand-cyan font-extrabold text-brand-navy">
+            {agencyPhoto ? <Image src={agencyPhoto} alt="" fill unoptimized className="object-cover" /> : (agencyName || profile.email).slice(0, 1).toUpperCase()}
+          </div>
           <p className="mt-3 truncate font-semibold">{agencyName || "Set up your agency"}</p>
           <p className="mt-1 text-sm text-slate-300">{agencyName ? "Casting agency" : profile.email}</p>
         </div>
