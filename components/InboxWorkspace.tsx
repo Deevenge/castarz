@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowUpRight, Bell, CheckCheck, CheckCircle2, Handshake, LoaderCircle, MessageCircle, Search, Send, Sparkles, UserPlus } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Bell, CheckCheck, CheckCircle2, Handshake, LoaderCircle, MessageCircle, Search, Send, Sparkles, UserPlus, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -85,7 +85,7 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
   const activeChatId = conversations.some((item) => item.id === requestedOrSelectedChat) ? requestedOrSelectedChat : "";
   const { messages, messagesLoading, messagesError } = useChatMessages(activeChatId);
   const selectedChat = conversations.find((item) => item.id === activeChatId) ?? null;
-  const selectedNotification = items.find((item) => item.id === selectedNotificationId) ?? items[0] ?? null;
+  const selectedNotification = selectedNotificationId ? items.find((item) => item.id === selectedNotificationId) ?? null : null;
   const activeConversationId = selectedChat?.id ?? "";
 
   const filteredConversations = useMemo(() => {
@@ -262,29 +262,33 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
           <p className="mt-2 text-slate-600">{empty}</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-brand-silver/70 md:grid md:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.3fr)]">
-          <section className="border-b border-brand-silver/60 md:border-b-0 md:border-r">
-            <div className="border-b border-brand-silver/60 px-5 py-4"><h2 className="font-bold">Notifications</h2></div>
+        <>
+        <div className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-brand-silver/70">
+          <section>
+            <div className="border-b border-brand-silver/60 px-5 py-4">
+              <h2 className="font-bold">Notifications</h2>
+              <p className="mt-1 text-sm text-slate-500">Tap any update to read the full message and jump into the right workspace.</p>
+            </div>
             {items.map((item) => {
               const Icon = icon[item.type];
-              const active = selectedNotification?.id === item.id;
               return (
-                <button key={item.id} type="button" onClick={() => void openNotification(item)} className={`flex w-full items-center gap-3 border-b border-slate-100 p-4 text-left transition ${active ? "bg-brand-ice" : "hover:bg-slate-50"}`}>
+                <button key={item.id} type="button" onClick={() => void openNotification(item)} className={`flex w-full items-center gap-3 border-b border-slate-100 p-4 text-left transition hover:bg-brand-ice/70 ${item.read ? "bg-white" : "bg-brand-ice/45"}`}>
                   <div className={`flex size-11 shrink-0 items-center justify-center rounded-2xl ${tone[item.type]}`}><Icon className="size-5" /></div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="truncate font-bold text-brand-navy">{item.title}</p>
-                      <span className="text-xs text-slate-400">{timeLabel(item.createdAtMs)}</span>
+                      <p className={`truncate text-brand-navy ${item.read ? "font-bold" : "font-extrabold"}`}>{item.title}</p>
+                      <span className={`text-xs ${item.read ? "text-slate-400" : "font-bold text-brand-blue"}`}>{timeLabel(item.createdAtMs)}</span>
                     </div>
-                    <p className="mt-1 truncate text-sm text-slate-600">{item.body}</p>
+                    <p className={`mt-1 truncate text-sm ${item.read ? "text-slate-600" : "font-bold text-brand-navy"}`}>{item.body}</p>
                   </div>
                   {!item.read && <span className="size-2 shrink-0 rounded-full bg-brand-blue" />}
                 </button>
               );
             })}
           </section>
-          {selectedNotification && <NotificationDetail item={selectedNotification} />}
         </div>
+        {selectedNotification && <NotificationDetail item={selectedNotification} close={() => setSelectedNotificationId(null)} />}
+        </>
       )}
     </div>
   );
@@ -358,35 +362,43 @@ function ErrorPanel({ icon: Icon, title, body }: { icon: typeof Bell; title: str
   );
 }
 
-function NotificationDetail({ item }: { item: InboxItem }) {
+function NotificationDetail({ item, close }: { item: InboxItem; close: () => void }) {
   const Icon = icon[item.type];
   return (
-    <article className="flex min-h-[380px] flex-col p-6 sm:p-8">
-      <div className="flex items-center gap-3 border-b border-brand-silver/60 pb-5">
-        <div className={`flex size-12 items-center justify-center rounded-2xl ${tone[item.type]}`}><Icon className="size-5" /></div>
-        <div>
-          <p className="font-bold text-brand-navy">{item.title}</p>
-          <p className="text-sm text-slate-500">{timeLabel(item.createdAtMs)}</p>
-        </div>
-      </div>
-      <div className="mt-7 max-w-lg rounded-2xl rounded-tl-sm bg-brand-ice p-5">
-        <p className="leading-6 text-slate-700">{item.body}</p>
-      </div>
-      {item.href && (
-        item.href.startsWith("http") ? (
-          <div className="mt-6 max-w-lg rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-            <p className="text-sm font-bold text-emerald-800">Booked cast communication</p>
-            <a href={item.href} target="_blank" rel="noreferrer" className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white hover:bg-emerald-700">
-              <MessageCircle className="size-4" />Join WhatsApp group
-            </a>
-            <p className="mt-2 break-all text-xs text-emerald-700">{item.href}</p>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-brand-navy/55 p-0 backdrop-blur-sm sm:items-center sm:p-6">
+      <article className="max-h-[92dvh] w-full max-w-xl overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl sm:p-8">
+        <div className="flex items-start justify-between gap-4 border-b border-brand-silver/60 pb-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className={`flex size-12 shrink-0 items-center justify-center rounded-2xl ${tone[item.type]}`}><Icon className="size-5" /></div>
+            <div className="min-w-0">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-brand-blue">Notification</p>
+              <h2 className="mt-1 truncate text-xl font-bold text-brand-navy">{item.title}</h2>
+              <p className="text-sm text-slate-500">{timeLabel(item.createdAtMs)}</p>
+            </div>
           </div>
-        ) : (
-          <Link href={item.href} className="mt-6 inline-flex min-h-11 w-fit items-center rounded-xl bg-brand-navy px-4 text-sm font-bold text-white hover:bg-brand-blue">
-            Open related workspace
-          </Link>
-        )
-      )}
-    </article>
+          <button type="button" onClick={close} className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-ice text-brand-navy hover:bg-slate-100" aria-label="Close notification">
+            <X className="size-5" />
+          </button>
+        </div>
+        <div className="mt-7 rounded-2xl rounded-tl-sm bg-brand-ice p-5">
+          <p className="whitespace-pre-wrap leading-7 text-slate-700">{item.body}</p>
+        </div>
+        {item.href && (
+          item.href.startsWith("http") ? (
+            <div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+              <p className="text-sm font-bold text-emerald-800">Booked cast communication</p>
+              <a href={item.href} target="_blank" rel="noreferrer" className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white hover:bg-emerald-700">
+                <MessageCircle className="size-4" />Join WhatsApp group
+              </a>
+              <p className="mt-2 break-all text-xs text-emerald-700">{item.href}</p>
+            </div>
+          ) : (
+            <Link href={item.href} className="mt-6 inline-flex min-h-11 w-fit items-center rounded-xl bg-brand-navy px-4 text-sm font-bold text-white hover:bg-brand-blue">
+              View more
+            </Link>
+          )
+        )}
+      </article>
+    </div>
   );
 }

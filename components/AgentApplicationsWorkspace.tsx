@@ -90,7 +90,7 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
       }
       const messages = {
         standby: { type: "application_standby" as const, title: "You are on stand-by", body: `${agencyName} placed you on stand-by for ${brief?.title ?? "a brief"}. Stay available.` },
-        booked: { type: "booking_confirmed" as const, title: "Booking confirmed", body: `${agencyName} confirmed your booking for ${brief?.title ?? "a brief"}. Check date, location, and rate on your applications.` },
+        booked: { type: "booking_confirmed" as const, title: "Booking confirmed", body: `${agencyName} confirmed your booking for ${brief?.title ?? "a brief"}. Check date, location, and rate on your applications. A final production message with call sheet details, wardrobe updates, or arrival instructions will follow if the agency needs to share more.` },
         rejected: { type: "application_rejected" as const, title: "Application update", body: `${agencyName} completed selections for ${brief?.title ?? "a brief"}. Keep your profile ready for the next one.` },
         pending: null,
       };
