@@ -136,7 +136,7 @@ function Status({ status }: { status: Application["status"] }) {
 
 function statusCopy(status: Application["status"]) {
   return status === "booked"
-    ? "Congratulations, your agency has booked you for this brief."
+    ? "Congratulations, your agency has booked you for this brief. More final details should follow in less than 24hrs, so stay on the lookout for the WhatsApp link or production message."
     : status === "rejected"
       ? "The agency has completed this selection. Keep your profile current for the next opportunity."
       : status === "standby"

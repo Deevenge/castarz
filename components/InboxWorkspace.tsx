@@ -1,15 +1,15 @@
 "use client";
 
-import { ArrowLeft, ArrowUpRight, Bell, CheckCheck, CheckCircle2, Handshake, LoaderCircle, MessageCircle, Search, Send, Sparkles, UserPlus, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Bell, CheckCheck, CheckCircle2, Handshake, LoaderCircle, MessageCircle, Search, Send, Sparkles, Trash2, UserPlus, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { doc, updateDoc } from "firebase/firestore";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { deleteDoc, doc, updateDoc } from "firebase/firestore";
+import { type FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { type InboxItem, useInbox } from "@/hooks/useInbox";
 import { type ChatConversation, useChatMessages, useChats } from "@/hooks/useChats";
-import { markConversationRead, sendChatMessage } from "@/lib/chat";
+import { deleteConversationForMe, markConversationRead, sendChatMessage } from "@/lib/chat";
 import { db } from "@/lib/firebase";
 import type { NotificationType } from "@/lib/notify";
 
@@ -40,6 +40,13 @@ const quickPrompts = [
   "Thanks for connecting. Can you share what kind of roles you are currently casting?",
   "Great profile. Are you available for a quick casting conversation this week?",
 ];
+
+type DeleteTarget = {
+  kind: "chat" | "notification";
+  id: string;
+  title: string;
+  body: string;
+};
 
 function timeLabel(ms: number) {
   if (!ms) return "Just now";
@@ -78,7 +85,11 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [ignoredRequestedChat, setIgnoredRequestedChat] = useState("");
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFired = useRef(false);
   const { items, loading: notificationsLoading, error: notificationsError, unreadCount } = useInbox();
   const { conversations, loading: chatsLoading, error: chatsError, unreadChatCount } = useChats();
   const requestedOrSelectedChat = selectedChatId || (requestedChat === ignoredRequestedChat ? "" : requestedChat);
@@ -111,6 +122,63 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
       await updateDoc(doc(db, "notifications", item.id), { read: true });
     } catch (error) {
       console.error("Unable to mark notification as read.", error);
+    }
+  }
+
+  function startLongPress(action: () => void) {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    longPressFired.current = false;
+    longPressTimer.current = setTimeout(() => {
+      longPressFired.current = true;
+      action();
+    }, 650);
+  }
+
+  function cancelLongPress() {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    longPressTimer.current = null;
+    setTimeout(() => { longPressFired.current = false; }, 120);
+  }
+
+  function longPressHandlers(action: () => void) {
+    return {
+      onPointerDown: () => startLongPress(action),
+      onPointerUp: cancelLongPress,
+      onPointerLeave: cancelLongPress,
+      onPointerCancel: cancelLongPress,
+      onContextMenu: (event: MouseEvent) => {
+        event.preventDefault();
+        action();
+      },
+    };
+  }
+
+  function ignoreClickAfterLongPress(event: MouseEvent) {
+    if (!longPressFired.current) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    return true;
+  }
+
+  async function confirmDeleteTarget() {
+    if (!user || !deleteTarget) return;
+    setDeleting(true);
+    try {
+      if (deleteTarget.kind === "chat") {
+        await deleteConversationForMe(deleteTarget.id, user.uid);
+        if (activeChatId === deleteTarget.id) {
+          setIgnoredRequestedChat(requestedChat);
+          setSelectedChatId("");
+        }
+      } else {
+        await deleteDoc(doc(db, "notifications", deleteTarget.id));
+        if (selectedNotificationId === deleteTarget.id) setSelectedNotificationId(null);
+      }
+      setDeleteTarget(null);
+    } catch (error) {
+      console.error("Unable to delete inbox item.", error);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -176,7 +244,13 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
                   const lastFromMe = conversation.lastSenderUid === user.uid;
                   const status = lastFromMe ? deliveryLabel(conversation, user.uid) : null;
                   return (
-                    <button key={conversation.id} type="button" onClick={() => setSelectedChatId(conversation.id)} className={`flex w-full gap-3 border-b border-slate-100 p-4 text-left transition ${unread ? "bg-brand-ice/80" : "hover:bg-slate-50"}`}>
+                    <button
+                      key={conversation.id}
+                      type="button"
+                      onClick={(event) => { if (!ignoreClickAfterLongPress(event)) setSelectedChatId(conversation.id); }}
+                      className={`flex w-full gap-3 border-b border-slate-100 p-4 text-left transition ${unread ? "bg-brand-ice/80" : "hover:bg-slate-50"}`}
+                      {...longPressHandlers(() => setDeleteTarget({ kind: "chat", id: conversation.id, title: party.name, body: "Delete this chat from your inbox. New messages can bring the conversation back." }))}
+                    >
                       <Avatar name={party.name} photo={party.photo} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
@@ -272,7 +346,13 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
             {items.map((item) => {
               const Icon = icon[item.type];
               return (
-                <button key={item.id} type="button" onClick={() => void openNotification(item)} className={`flex w-full items-center gap-3 border-b border-slate-100 p-4 text-left transition hover:bg-brand-ice/70 ${item.read ? "bg-white" : "bg-brand-ice/45"}`}>
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={(event) => { if (!ignoreClickAfterLongPress(event)) void openNotification(item); }}
+                  className={`flex w-full items-center gap-3 border-b border-slate-100 p-4 text-left transition hover:bg-brand-ice/70 ${item.read ? "bg-white" : "bg-brand-ice/45"}`}
+                  {...longPressHandlers(() => setDeleteTarget({ kind: "notification", id: item.id, title: item.title, body: "Delete this notification from your inbox." }))}
+                >
                   <div className={`flex size-11 shrink-0 items-center justify-center rounded-2xl ${tone[item.type]}`}><Icon className="size-5" /></div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
@@ -290,6 +370,7 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
         {selectedNotification && <NotificationDetail item={selectedNotification} close={() => setSelectedNotificationId(null)} />}
         </>
       )}
+      {deleteTarget && <DeleteInboxItemDialog target={deleteTarget} deleting={deleting} close={() => setDeleteTarget(null)} confirm={() => void confirmDeleteTarget()} />}
     </div>
   );
 }
@@ -358,6 +439,32 @@ function ErrorPanel({ icon: Icon, title, body }: { icon: typeof Bell; title: str
       <Icon className="mx-auto size-9" />
       <h2 className="mt-4 text-xl font-bold">{title}</h2>
       <p className="mx-auto mt-2 max-w-md text-sm">{body}</p>
+    </div>
+  );
+}
+
+function DeleteInboxItemDialog({ target, deleting, close, confirm }: { target: DeleteTarget; deleting: boolean; close: () => void; confirm: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-brand-navy/55 p-0 backdrop-blur-sm sm:items-center sm:p-6">
+      <section className="w-full max-w-md rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl">
+        <div className="flex items-start gap-3">
+          <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-red-50 text-red-700">
+            <Trash2 className="size-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-red-600">Delete {target.kind}</p>
+            <h2 className="mt-1 truncate text-xl font-bold text-brand-navy">{target.title}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{target.body}</p>
+          </div>
+        </div>
+        <div className="mt-6 grid grid-cols-2 gap-3">
+          <button type="button" onClick={close} className="min-h-12 rounded-xl border border-slate-300 font-bold text-slate-600 hover:bg-slate-50">Cancel</button>
+          <button type="button" disabled={deleting} onClick={confirm} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-red-600 font-bold text-white hover:bg-red-700 disabled:opacity-60">
+            {deleting ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+            {deleting ? "Deleting..." : "Delete"}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }

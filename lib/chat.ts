@@ -59,11 +59,19 @@ export async function sendChatMessage(conversationId: string, senderUid: string,
     lastMessageAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     readBy: [senderUid],
+    deletedFor: [],
   });
 }
 
 export async function markConversationRead(conversationId: string, uid: string) {
   await updateDoc(doc(db, "conversations", conversationId), {
     readBy: arrayUnion(uid),
+  });
+}
+
+export async function deleteConversationForMe(conversationId: string, uid: string) {
+  await updateDoc(doc(db, "conversations", conversationId), {
+    deletedFor: arrayUnion(uid),
+    updatedAt: serverTimestamp(),
   });
 }

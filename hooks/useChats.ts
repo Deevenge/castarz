@@ -15,6 +15,7 @@ export interface ChatConversation {
   actorPhoto: string;
   participantUids: string[];
   readBy: string[];
+  deletedFor: string[];
   lastMessage: string;
   lastSenderUid: string;
   lastMessageAtMs: number;
@@ -56,6 +57,7 @@ export function useChats() {
           actorPhoto: typeof data.actorPhoto === "string" ? data.actorPhoto : "",
           participantUids: Array.isArray(data.participantUids) ? data.participantUids.filter((uid): uid is string => typeof uid === "string") : [],
           readBy: Array.isArray(data.readBy) ? data.readBy.filter((uid): uid is string => typeof uid === "string") : [],
+          deletedFor: Array.isArray(data.deletedFor) ? data.deletedFor.filter((uid): uid is string => typeof uid === "string") : [],
           lastMessage: typeof data.lastMessage === "string" ? data.lastMessage : "",
           lastSenderUid: typeof data.lastSenderUid === "string" ? data.lastSenderUid : "",
           lastMessageAtMs: toMillis(data.lastMessageAt),
@@ -74,7 +76,7 @@ export function useChats() {
     });
   }, [user]);
 
-  const visibleConversations = useMemo(() => user ? conversations.filter((item) => item.participantUids.includes(user.uid)) : [], [conversations, user]);
+  const visibleConversations = useMemo(() => user ? conversations.filter((item) => item.participantUids.includes(user.uid) && !item.deletedFor.includes(user.uid)) : [], [conversations, user]);
   const unreadChatCount = useMemo(() => user ? visibleConversations.filter((item) => item.lastSenderUid && item.lastSenderUid !== user.uid && !item.readBy.includes(user.uid)).length : 0, [visibleConversations, user]);
 
   return {
