@@ -11,6 +11,8 @@ export interface ActorCredit {
   production: string;
   year: string;
   role: string;
+  mediaUrl: string;
+  mediaType: "none" | "image" | "video";
 }
 
 export interface ActorProfile {
@@ -65,6 +67,15 @@ export async function compressImageToDataUrl(file: File): Promise<string> {
   });
 }
 
+export async function fileToDataUrl(file: File): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("We could not read that file."));
+    reader.readAsDataURL(file);
+  });
+}
+
 export function normalizeActorProfile(data: Partial<ActorProfile> | undefined): ActorProfile {
   const albums = { ...emptyActorProfile.albums, ...data?.albums };
   const credits = Array.isArray(data?.credits)
@@ -72,6 +83,8 @@ export function normalizeActorProfile(data: Partial<ActorProfile> | undefined): 
       production: typeof credit?.production === "string" ? credit.production : "",
       year: typeof credit?.year === "string" ? credit.year : "",
       role: typeof credit?.role === "string" ? credit.role : "",
+      mediaUrl: typeof credit?.mediaUrl === "string" ? credit.mediaUrl : "",
+      mediaType: (credit?.mediaType === "image" || credit?.mediaType === "video" ? credit.mediaType : "none") as ActorCredit["mediaType"],
     })).filter((credit) => credit.production.trim() || credit.year.trim() || credit.role.trim()).slice(0, 12)
     : [];
   return {

@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "CASTARZ",
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
   },
   other: {
     "apple-mobile-web-app-capable": "yes",
@@ -39,7 +39,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#04183C",
+  themeColor: "#ffffff",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",

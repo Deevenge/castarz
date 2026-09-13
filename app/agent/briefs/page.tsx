@@ -3,6 +3,7 @@
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { CheckCircle2, Clock3, Edit3, Globe2, LoaderCircle, LockKeyhole, MapPin, MessageCircle, Plus, Send, Trash2, UsersRound, X } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { AgentApplicationsWorkspace } from "@/components/AgentApplicationsWorkspace";
 import { useAuth } from "@/context/AuthContext";
 import { briefFromDocument, type AgentBrief, type BriefStatus, type BriefVisibility } from "@/lib/agent-data";
 import { db } from "@/lib/firebase";
@@ -52,6 +53,7 @@ export default function BriefsPage() {
   const [closingBrief, setClosingBrief] = useState<AgentBrief | null>(null);
   const [editingBrief, setEditingBrief] = useState<AgentBrief | null>(null);
   const [deletingBrief, setDeletingBrief] = useState<AgentBrief | null>(null);
+  const [section, setSection] = useState<"briefs" | "applications">("briefs");
 
   useEffect(() => {
     if (!user) return;
@@ -153,12 +155,23 @@ export default function BriefsPage() {
           <h1 className="mt-1 text-3xl font-bold">Publish with the right reach.</h1>
           <p className="mt-2 text-slate-600">Set how many actors you need, then close the brief when the cast is booked.</p>
         </div>
-        <button onClick={startNewBrief} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-brand-blue px-5 font-bold text-white hover:bg-brand-navy"><Plus className="size-5" />New brief</button>
+        {section === "briefs" && <button onClick={startNewBrief} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-brand-blue px-5 font-bold text-white hover:bg-brand-navy"><Plus className="size-5" />New brief</button>}
       </header>
+
+      <div className="mt-6 inline-grid grid-cols-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-brand-silver/70">
+        <button type="button" onClick={() => setSection("briefs")} className={`min-h-11 rounded-xl px-4 text-sm font-black ${section === "briefs" ? "bg-brand-navy text-white shadow-sm" : "text-slate-500 hover:text-brand-navy"}`}>Brief board</button>
+        <button type="button" onClick={() => setSection("applications")} className={`min-h-11 rounded-xl px-4 text-sm font-black ${section === "applications" ? "bg-brand-navy text-white shadow-sm" : "text-slate-500 hover:text-brand-navy"}`}>Applications <span className="ml-2 opacity-70">{applications.length}</span></button>
+      </div>
+
+      {section === "applications" && (
+        <div className="mt-7">
+          <AgentApplicationsWorkspace compact />
+        </div>
+      )}
 
       {notice && <p className="mt-6 flex items-center gap-2 rounded-xl bg-brand-ice px-4 py-3 text-sm font-semibold text-brand-navy"><CheckCircle2 className="size-5 text-brand-blue" />{notice}</p>}
 
-      {open && (
+      {section === "briefs" && open && (
         <section className="mt-7 rounded-3xl bg-white p-5 shadow-xl shadow-brand-navy/10 ring-1 ring-brand-silver/70 sm:p-7">
           <div className="flex justify-between gap-4">
             <div>
@@ -201,7 +214,7 @@ export default function BriefsPage() {
         </section>
       )}
 
-      <section className="mt-7 space-y-4">
+      {section === "briefs" && <section className="mt-7 space-y-4">
         {briefs.map((brief) => (
           <BriefCard
             key={brief.id}
@@ -213,9 +226,9 @@ export default function BriefsPage() {
           />
         ))}
         {!briefs.length && <div className="rounded-3xl border-2 border-dashed border-brand-silver bg-white p-10 text-center"><Plus className="mx-auto size-8 text-brand-blue" /><p className="mt-4 font-bold">Your brief board is clear.</p></div>}
-      </section>
+      </section>}
 
-      {closingBrief && (
+      {section === "briefs" && closingBrief && (
         <CloseBriefDialog
           brief={closingBrief}
           applications={applicationsByBrief[closingBrief.id] ?? []}
@@ -227,7 +240,7 @@ export default function BriefsPage() {
           }}
         />
       )}
-      {deletingBrief && (
+      {section === "briefs" && deletingBrief && (
         <DeleteBriefDialog
           brief={deletingBrief}
           applications={applicationsByBrief[deletingBrief.id] ?? []}

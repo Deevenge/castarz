@@ -1,7 +1,8 @@
 "use client";
 
 import { doc, onSnapshot, serverTimestamp, updateDoc } from "firebase/firestore";
-import { Check, LoaderCircle, X } from "lucide-react";
+import { Check, LoaderCircle, PlaySquare, X } from "lucide-react";
+import Image from "next/image";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ActorHeroCard, LoadingScreen, PhotoGrid, ProfileTabs, SpecChips } from "@/components/ProfileChrome";
@@ -129,10 +130,21 @@ export default function TalentProfilePage() {
             {actor.credits.length ? (
               <div className="mt-4 overflow-hidden rounded-2xl border border-brand-silver/70">
                 {actor.credits.map((credit, index) => (
-                  <div key={`${credit.production}-${credit.year}-${index}`} className="grid gap-1 border-b border-slate-100 bg-white p-4 last:border-b-0 sm:grid-cols-[1fr_90px_1fr]">
-                    <p className="font-bold text-brand-navy">{credit.production || "Untitled production"}</p>
-                    <p className="text-sm font-semibold text-slate-500">{credit.year || "Year"}</p>
-                    <p className="text-sm font-semibold text-slate-700">{credit.role || "Role not specified"}</p>
+                  <div key={`${credit.production}-${credit.year}-${index}`} className="grid gap-4 border-b border-slate-100 bg-white p-4 last:border-b-0 md:grid-cols-[140px_1fr]">
+                    <div className="relative aspect-video overflow-hidden rounded-2xl bg-brand-ice">
+                      {credit.mediaType === "image" && credit.mediaUrl ? (
+                        <Image src={credit.mediaUrl} alt={`${credit.production || "Credit"} media`} fill unoptimized className="object-cover" />
+                      ) : credit.mediaType === "video" && credit.mediaUrl ? (
+                        <video src={credit.mediaUrl} controls playsInline className="size-full object-cover" />
+                      ) : (
+                        <div className="flex size-full items-center justify-center text-brand-blue"><PlaySquare className="size-6" /></div>
+                      )}
+                    </div>
+                    <div className="grid gap-1 sm:grid-cols-[1fr_90px_1fr] sm:items-center">
+                      <p className="font-bold text-brand-navy">{credit.production || "Untitled production"}</p>
+                      <p className="text-sm font-semibold text-slate-500">{credit.year || "Year"}</p>
+                      <p className="text-sm font-semibold text-slate-700">{credit.role || "Role not specified"}</p>
+                    </div>
                   </div>
                 ))}
               </div>

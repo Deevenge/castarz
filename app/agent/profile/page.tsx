@@ -1,29 +1,20 @@
 "use client";
 
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
-import { Building2, Camera, CheckCircle2, ImagePlus, LoaderCircle, LogOut, Save } from "lucide-react";
+import { Building2, Camera, CheckCircle2, ImagePlus, LoaderCircle, LogOut, Plus, Save, Trash2 } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { type ChangeEvent, type FormEvent, useEffect, useState } from "react";
 import { MyPostsSection } from "@/components/MyPostsSection";
 import { useAuth } from "@/context/AuthContext";
+import { emptyAgencyProfile, normalizeAgencyProfile, type AgencyCredit, type AgencyProfile } from "@/lib/agency-profile";
 import { compressImageToDataUrl } from "@/lib/actor-profile";
 import { db } from "@/lib/firebase";
-
-type AgencyProfile = {
-  name: string;
-  username: string;
-  description: string;
-  photo: string;
-  banner: string;
-};
-
-const empty: AgencyProfile = { name: "", username: "", description: "", photo: "", banner: "" };
 
 export default function AgencyProfilePage() {
   const { user, signOut } = useAuth();
   const router = useRouter();
-  const [agency, setAgency] = useState<AgencyProfile>(empty);
+  const [agency, setAgency] = useState<AgencyProfile>(emptyAgencyProfile);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -34,13 +25,7 @@ export default function AgencyProfilePage() {
     if (!user) return;
     void getDoc(doc(db, "agencies", user.uid)).then((snapshot) => {
       const data = snapshot.data();
-      setAgency({
-        name: typeof data?.name === "string" ? data.name : "",
-        username: typeof data?.username === "string" ? data.username : "",
-        description: typeof data?.description === "string" ? data.description : "",
-        photo: typeof data?.photo === "string" ? data.photo : "",
-        banner: typeof data?.banner === "string" ? data.banner : "",
-      });
+      setAgency(normalizeAgencyProfile(data as Partial<AgencyProfile> | undefined));
     }).catch(() => setNotice("We could not load the agency profile.")).finally(() => setLoading(false));
   }, [user]);
 
@@ -58,6 +43,15 @@ export default function AgencyProfilePage() {
         description: agency.description.trim(),
         photo: agency.photo,
         banner: agency.banner,
+        specialties: agency.specialties.trim(),
+        markets: agency.markets.trim(),
+        portfolio: agency.portfolio.map((credit) => ({
+          production: credit.production.trim(),
+          year: credit.year.trim(),
+          supplied: credit.supplied.trim(),
+          talentCount: credit.talentCount.trim(),
+          note: credit.note.trim(),
+        })).filter((credit) => credit.production || credit.supplied || credit.note).slice(0, 12),
         updatedAt: serverTimestamp(),
       }, { merge: true });
       setNotice("Agency profile saved. Your posts and briefs now use this identity.");
@@ -107,6 +101,24 @@ export default function AgencyProfilePage() {
   async function handleSignOut() {
     await signOut();
     router.replace("/auth");
+  }
+
+  function updatePortfolio(index: number, key: keyof AgencyCredit, value: string) {
+    setAgency((current) => ({
+      ...current,
+      portfolio: current.portfolio.map((credit, creditIndex) => creditIndex === index ? { ...credit, [key]: value } : credit),
+    }));
+  }
+
+  function addPortfolioItem() {
+    setAgency((current) => ({
+      ...current,
+      portfolio: [...current.portfolio, { production: "", year: "", supplied: "", talentCount: "", note: "" }],
+    }));
+  }
+
+  function removePortfolioItem(index: number) {
+    setAgency((current) => ({ ...current, portfolio: current.portfolio.filter((_, creditIndex) => creditIndex !== index) }));
   }
 
   if (loading) return <div className="flex min-h-[60vh] items-center justify-center"><LoaderCircle className="size-7 animate-spin text-brand-blue" /></div>;
@@ -163,6 +175,42 @@ export default function AgencyProfilePage() {
           <textarea value={agency.description} onChange={(event) => setAgency({ ...agency, description: event.target.value })} rows={4} placeholder="Tell actors what your agency is known for, the productions you cast, and what kind of talent should connect with you." className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
           <p className="mt-2 text-xs font-semibold text-slate-500">This appears on your public agency profile, so make it warm, credible, and specific.</p>
         </label>
+        <div className="mt-6 grid gap-5 sm:grid-cols-2">
+          <Field label="Casting specialties" value={agency.specialties} set={(specialties) => setAgency({ ...agency, specialties })} placeholder="e.g. TV drama, commercials, extras, kids, featured roles" help="List the kinds of casting work actors and producers should associate with your agency." />
+          <Field label="Markets covered" value={agency.markets} set={(markets) => setAgency({ ...agency, markets })} placeholder="e.g. Johannesburg, Cape Town, Durban, national campaigns" help="Mention the cities, provinces, or production markets where your agency is active." />
+        </div>
+        <section className="mt-7 rounded-3xl border border-brand-silver/70 bg-brand-ice/35 p-4 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-bold text-brand-navy">Agency z-card portfolio</h3>
+              <p className="mt-1 text-sm text-slate-600">Add productions, campaigns, or shows where your agency supplied actors, extras, featured talent, dancers, presenters, or background cast.</p>
+            </div>
+            <button type="button" onClick={addPortfolioItem} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-brand-navy px-4 text-sm font-bold text-white">
+              <Plus className="size-4" />Add project
+            </button>
+          </div>
+          <div className="mt-5 space-y-4">
+            {agency.portfolio.map((credit, index) => (
+              <div key={index} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-brand-silver/70">
+                <div className="grid gap-4 lg:grid-cols-[1fr_110px_1fr_120px_auto] lg:items-start">
+                  <Field label="Production" value={credit.production} set={(production) => updatePortfolio(index, "production", production)} placeholder="e.g. The Wife, Netflix campaign, TVC, theatre festival" help="Name the show, film, commercial, event, or production." />
+                  <Field label="Year" value={credit.year} set={(year) => updatePortfolio(index, "year", year)} placeholder="e.g. 2026" help="Use the shoot, release, or campaign year." />
+                  <Field label="Supplied" value={credit.supplied} set={(supplied) => updatePortfolio(index, "supplied", supplied)} placeholder="e.g. Extras, featured actors, dancers, presenters" help="Describe what kind of talent your agency supplied." />
+                  <Field label="Talent count" value={credit.talentCount} set={(talentCount) => updatePortfolio(index, "talentCount", talentCount)} placeholder="e.g. 35 extras" help="Optional, but powerful for credibility." />
+                  <button type="button" onClick={() => removePortfolioItem(index)} className="flex size-12 items-center justify-center rounded-xl bg-red-50 text-red-700 lg:mt-7" aria-label="Remove project">
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
+                <label className="mt-4 block">
+                  <span className="mb-2 block text-sm font-bold text-slate-700">Project note</span>
+                  <textarea value={credit.note} onChange={(event) => updatePortfolio(index, "note", event.target.value)} rows={3} placeholder="Add context: turnaround speed, scale, casting challenge, production type, or why this project shows your agency's quality." className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
+                  <p className="mt-2 text-xs font-semibold text-slate-500">Keep it specific and premium; this is what makes the agency profile feel trusted.</p>
+                </label>
+              </div>
+            ))}
+            {!agency.portfolio.length && <p className="rounded-2xl border border-dashed border-brand-silver bg-white/70 p-5 text-sm font-semibold text-slate-500">No agency projects yet. Add one or two strong productions to make the profile feel established.</p>}
+          </div>
+        </section>
         {notice && <p className="mt-5 flex items-center gap-2 rounded-xl bg-brand-ice px-4 py-3 text-sm font-semibold text-brand-navy"><CheckCircle2 className="size-5 text-brand-blue" />{notice}</p>}
         <button disabled={saving} className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-blue font-bold text-white hover:bg-brand-navy disabled:opacity-50">
           {saving ? <LoaderCircle className="size-5 animate-spin" /> : <Save className="size-5" />}

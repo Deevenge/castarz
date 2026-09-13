@@ -1,13 +1,14 @@
 "use client";
 
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
-import { CheckCircle2, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
-import { type FormEvent, useEffect, useState } from "react";
+import { CheckCircle2, ImagePlus, LoaderCircle, PlaySquare, Plus, Save, Trash2, X } from "lucide-react";
+import Image from "next/image";
+import { type ChangeEvent, type FormEvent, useEffect, useState } from "react";
 import { SpecChips } from "@/components/ProfileChrome";
 import { MyPostsSection } from "@/components/MyPostsSection";
 import { useAuth } from "@/context/AuthContext";
 import { auth, db } from "@/lib/firebase";
-import { emptyActorProfile, normalizeActorProfile, type ActorCredit, type ActorProfile, type AvailabilityStatus } from "@/lib/actor-profile";
+import { compressImageToDataUrl, emptyActorProfile, fileToDataUrl, normalizeActorProfile, type ActorCredit, type ActorProfile, type AvailabilityStatus } from "@/lib/actor-profile";
 
 function helpForField(key: keyof ActorProfile) {
   const help: Partial<Record<keyof ActorProfile, string>> = {
@@ -58,11 +59,40 @@ export default function ActorProfilePage() {
   }
 
   function addCredit() {
-    setActor((current) => ({ ...current, credits: [...current.credits, { production: "", year: "", role: "" }] }));
+    setActor((current) => ({ ...current, credits: [...current.credits, { production: "", year: "", role: "", mediaUrl: "", mediaType: "none" }] }));
   }
 
   function removeCredit(index: number) {
     setActor((current) => ({ ...current, credits: current.credits.filter((_, creditIndex) => creditIndex !== index) }));
+  }
+
+  async function uploadCreditMedia(event: ChangeEvent<HTMLInputElement>, index: number) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const isVideo = file.type.startsWith("video/");
+      if (isVideo && file.size > 700_000) {
+        setNotice("That clip is too large for the z-card preview. Please upload a very short compressed clip under 700 KB.");
+        event.target.value = "";
+        return;
+      }
+      const mediaUrl = isVideo ? await fileToDataUrl(file) : await compressImageToDataUrl(file);
+      setActor((current) => ({
+        ...current,
+        credits: current.credits.map((credit, creditIndex) => creditIndex === index ? { ...credit, mediaUrl, mediaType: isVideo ? "video" : "image" } : credit),
+      }));
+    } catch {
+      setNotice("We could not attach that credit media. Please try another file.");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  function removeCreditMedia(index: number) {
+    setActor((current) => ({
+      ...current,
+      credits: current.credits.map((credit, creditIndex) => creditIndex === index ? { ...credit, mediaUrl: "", mediaType: "none" } : credit),
+    }));
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -114,12 +144,23 @@ export default function ActorProfilePage() {
               <span className="rounded-full bg-brand-ice px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-brand-blue">{actor.credits.length} listed</span>
             </div>
             {actor.credits.length ? (
-              <div className="mt-4 grid gap-3">
+              <div className="mt-4 overflow-hidden rounded-2xl border border-brand-silver/70">
                 {actor.credits.map((credit, index) => (
-                  <div key={`${credit.production}-${credit.year}-${index}`} className="grid gap-2 rounded-2xl bg-brand-ice/70 p-4 sm:grid-cols-[1fr_90px_1fr]">
-                    <p className="font-bold text-brand-navy">{credit.production || "Untitled production"}</p>
-                    <p className="text-sm font-semibold text-slate-500">{credit.year || "Year"}</p>
-                    <p className="text-sm font-semibold text-slate-700">{credit.role || "Role not specified"}</p>
+                  <div key={`${credit.production}-${credit.year}-${index}`} className="grid gap-4 border-b border-slate-100 bg-white p-4 last:border-b-0 md:grid-cols-[140px_1fr]">
+                    <div className="relative aspect-video overflow-hidden rounded-2xl bg-brand-ice">
+                      {credit.mediaType === "image" && credit.mediaUrl ? (
+                        <Image src={credit.mediaUrl} alt={`${credit.production || "Credit"} media`} fill unoptimized className="object-cover" />
+                      ) : credit.mediaType === "video" && credit.mediaUrl ? (
+                        <video src={credit.mediaUrl} controls playsInline className="size-full object-cover" />
+                      ) : (
+                        <div className="flex size-full items-center justify-center text-brand-blue"><PlaySquare className="size-6" /></div>
+                      )}
+                    </div>
+                    <div className="grid gap-1 sm:grid-cols-[1fr_90px_1fr] sm:items-center">
+                      <p className="font-bold text-brand-navy">{credit.production || "Untitled production"}</p>
+                      <p className="text-sm font-semibold text-slate-500">{credit.year || "Year"}</p>
+                      <p className="text-sm font-semibold text-slate-700">{credit.role || "Role not specified"}</p>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -213,6 +254,34 @@ export default function ActorProfilePage() {
                     <button type="button" onClick={() => removeCredit(index)} className="flex size-12 items-center justify-center rounded-xl bg-red-50 text-red-700 sm:mt-7" aria-label="Remove credit">
                       <Trash2 className="size-4" />
                     </button>
+                  </div>
+                  <div className="mt-4 grid gap-4 md:grid-cols-[180px_1fr] md:items-center">
+                    <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-2xl border border-brand-silver/70 bg-white">
+                      {credit.mediaType === "image" && credit.mediaUrl ? (
+                        <Image src={credit.mediaUrl} alt={`${credit.production || "Credit"} media`} fill unoptimized className="object-cover" />
+                      ) : credit.mediaType === "video" && credit.mediaUrl ? (
+                        <video src={credit.mediaUrl} className="size-full object-cover" controls playsInline />
+                      ) : (
+                        <div className="px-4 text-center">
+                          <ImagePlus className="mx-auto size-6 text-brand-blue" />
+                          <p className="mt-2 text-xs font-bold text-slate-500">Optional photo or short clip</p>
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex flex-wrap gap-2">
+                        <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl bg-brand-navy px-4 text-sm font-bold text-white">
+                          <PlaySquare className="size-4" />Attach media
+                          <input type="file" accept="image/*,video/*" onChange={(event) => void uploadCreditMedia(event, index)} className="sr-only" />
+                        </label>
+                        {credit.mediaUrl && (
+                          <button type="button" onClick={() => removeCreditMedia(index)} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-red-50 px-4 text-sm font-bold text-red-700">
+                            <X className="size-4" />Remove media
+                          </button>
+                        )}
+                      </div>
+                      <p className="mt-2 text-xs font-semibold text-slate-500">Attach a still from set, poster image, or a very short compressed showreel clip. Clips must stay under 700 KB for this version.</p>
+                    </div>
                   </div>
                 </div>
               ))}

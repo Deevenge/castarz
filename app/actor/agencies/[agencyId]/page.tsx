@@ -162,8 +162,46 @@ export default function AgencyPublicPage() {
       {notice && <p className="flex items-center gap-2 rounded-xl bg-brand-ice px-4 py-3 text-sm font-semibold text-brand-navy"><CheckCircle2 className="size-5 text-brand-blue" />{notice}</p>}
       {tab === "about" && (
         <section className="rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-brand-silver/70 sm:p-6">
-          <h2 className="text-lg font-bold">About {agency.name}</h2>
-          <p className="mt-2 leading-7 text-slate-600">{agency.description}</p>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-blue">Agency z-card</p>
+              <h2 className="mt-1 text-xl font-bold">About {agency.name}</h2>
+            </div>
+            {agency.markets && <span className="rounded-full bg-brand-ice px-3 py-1.5 text-xs font-black uppercase tracking-[0.12em] text-brand-navy">{agency.markets}</span>}
+          </div>
+          <p className="mt-4 leading-7 text-slate-600">{agency.description}</p>
+          {(agency.specialties || agency.markets) && (
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              {agency.specialties && <InfoTile label="Specialties" value={agency.specialties} />}
+              {agency.markets && <InfoTile label="Markets" value={agency.markets} />}
+            </div>
+          )}
+          <div className="mt-7 border-t border-brand-silver/70 pt-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-brand-navy">Productions and supplied talent</h3>
+                <p className="mt-1 text-sm text-slate-500">Shows, campaigns, events, and casting support this agency has worked on.</p>
+              </div>
+              <span className="rounded-full bg-brand-navy px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-brand-cyan">{agency.portfolio.length} projects</span>
+            </div>
+            {agency.portfolio.length ? (
+              <div className="mt-4 overflow-hidden rounded-2xl border border-brand-silver/70">
+                {agency.portfolio.map((credit, index) => (
+                  <div key={`${credit.production}-${credit.year}-${index}`} className="border-b border-slate-100 bg-white p-4 last:border-b-0">
+                    <div className="grid gap-2 sm:grid-cols-[1fr_90px_1fr_120px]">
+                      <p className="font-bold text-brand-navy">{credit.production || "Production"}</p>
+                      <p className="text-sm font-semibold text-slate-500">{credit.year || "Year"}</p>
+                      <p className="text-sm font-semibold text-slate-700">{credit.supplied || "Talent supplied"}</p>
+                      <p className="text-sm font-bold text-brand-blue">{credit.talentCount || "Scale private"}</p>
+                    </div>
+                    {credit.note && <p className="mt-3 rounded-xl bg-brand-ice/70 p-3 text-sm leading-6 text-slate-600">{credit.note}</p>}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-4 rounded-2xl border border-dashed border-brand-silver bg-brand-ice/40 p-5 text-sm font-semibold text-slate-500">This agency has not added production credits yet.</p>
+            )}
+          </div>
         </section>
       )}
       {tab === "briefs" && (
@@ -193,6 +231,15 @@ export default function AgencyPublicPage() {
           {!visibleBriefs.length && <p className="rounded-[28px] border-2 border-dashed border-brand-silver bg-white p-8 text-center text-sm text-slate-600">No live briefs from this agency yet.</p>}
         </div>
       )}
+    </div>
+  );
+}
+
+function InfoTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl bg-brand-ice/70 p-4">
+      <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-blue">{label}</p>
+      <p className="mt-2 text-sm font-semibold leading-6 text-brand-navy">{value}</p>
     </div>
   );
 }

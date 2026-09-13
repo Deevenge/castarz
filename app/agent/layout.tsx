@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
-import { Bell, BriefcaseBusiness, ClipboardCheck, LayoutDashboard, LogOut, Settings, UsersRound } from "lucide-react";
+import { Bell, BriefcaseBusiness, LayoutDashboard, LogOut, MessageCircle, Settings, UsersRound } from "lucide-react";
 import { MobileTopBar } from "@/components/MobileTopBar";
 import { LogoLoader } from "@/components/LogoLoader";
 import { useAuth } from "@/context/AuthContext";
@@ -18,12 +18,13 @@ const links = [
   { href: "/agent/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/agent/briefs", label: "Briefs", icon: BriefcaseBusiness },
   { href: "/agent/network", label: "Talent", icon: UsersRound },
-  { href: "/agent/applications", label: "Applications", icon: ClipboardCheck },
+  { href: "/agent/inbox", label: "Inbox", icon: MessageCircle },
   { href: "/agent/profile", label: "Agency", icon: Settings },
 ];
 
 function agentNavActive(pathname: string, href: string) {
   if (href === "/agent/network") return pathname.startsWith(href) || pathname.startsWith("/agent/talent");
+  if (href === "/agent/briefs") return pathname.startsWith(href) || pathname.startsWith("/agent/applications");
   return pathname === href;
 }
 
@@ -79,13 +80,9 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
         <nav className="mt-7 space-y-2">
           {links.map(({ href, label, icon: Icon }) => (
             <Link key={href} href={href} className={`flex min-h-12 items-center gap-3 rounded-xl px-4 text-sm font-semibold ${agentNavActive(pathname, href) ? "bg-brand-blue text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}>
-              <Icon className="size-5" />{label}
+              <span className="relative"><Icon className="size-5" />{href === "/agent/inbox" && <UnreadDot count={totalUnread} />}</span>{label}
             </Link>
           ))}
-          <Link href="/agent/inbox" className={`flex min-h-12 items-center gap-3 rounded-xl px-4 text-sm font-semibold ${pathname === "/agent/inbox" ? "bg-brand-blue text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}>
-            <span className="relative"><Bell className="size-5" /><UnreadDot count={totalUnread} /></span>
-            Inbox
-          </Link>
         </nav>
         <button type="button" onClick={() => void handleSignOut()} className="mt-auto flex min-h-12 items-center gap-3 rounded-xl px-4 text-sm font-semibold text-slate-300 hover:bg-white/10 hover:text-white">
           <LogOut className="size-5" />Log out
@@ -104,8 +101,8 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
       <main className="min-h-dvh px-4 py-6 pb-28 sm:px-7 lg:ml-72 lg:px-10 lg:py-10 lg:pb-10">{children}</main>
       <nav className="fixed inset-x-0 bottom-0 z-40 flex h-[76px] items-center justify-around border-t border-brand-silver/70 bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] lg:hidden">
         {links.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href} className={`flex min-h-14 min-w-14 flex-col items-center justify-center gap-1 text-[10px] font-bold ${agentNavActive(pathname, href) ? "text-brand-blue" : "text-slate-500"}`}>
-            <Icon className="size-5" /><span>{label}</span>
+          <Link key={href} href={href} className={`relative flex min-h-14 min-w-14 flex-col items-center justify-center gap-1 text-[10px] font-bold ${agentNavActive(pathname, href) ? "text-brand-blue" : "text-slate-500"}`}>
+            <span className="relative"><Icon className="size-5" />{href === "/agent/inbox" && <UnreadDot count={totalUnread} />}</span><span>{label}</span>
           </Link>
         ))}
       </nav>

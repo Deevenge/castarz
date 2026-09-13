@@ -1,4 +1,5 @@
 import { type DocumentData } from "firebase/firestore";
+import { normalizeAgencyProfile, type AgencyCredit } from "@/lib/agency-profile";
 import { emptyActorProfile, normalizeActorProfile, type ActorProfile } from "@/lib/actor-profile";
 
 export interface DirectoryActor extends ActorProfile {
@@ -13,6 +14,9 @@ export interface DirectoryAgency {
   description: string;
   photo: string;
   banner: string;
+  specialties: string;
+  markets: string;
+  portfolio: AgencyCredit[];
 }
 
 export function directoryActorFromData(uid: string, data: DocumentData | undefined): DirectoryActor {
@@ -20,14 +24,18 @@ export function directoryActorFromData(uid: string, data: DocumentData | undefin
 }
 
 export function directoryAgencyFromData(id: string, data: DocumentData | undefined): DirectoryAgency {
+  const profile = normalizeAgencyProfile(data as Partial<DirectoryAgency> | undefined);
   return {
     id,
-    name: typeof data?.name === "string" && data.name.trim() ? data.name : "CASTARZ Agency",
+    name: profile.name.trim() ? profile.name : "CASTARZ Agency",
     email: typeof data?.email === "string" ? data.email : "",
-    username: typeof data?.username === "string" ? data.username : "",
-    description: typeof data?.description === "string" && data.description.trim() ? data.description : "Casting agency on CASTARZ",
-    photo: typeof data?.photo === "string" ? data.photo : "",
-    banner: typeof data?.banner === "string" ? data.banner : "",
+    username: profile.username,
+    description: profile.description.trim() ? profile.description : "Casting agency on CASTARZ",
+    photo: profile.photo,
+    banner: profile.banner,
+    specialties: profile.specialties,
+    markets: profile.markets,
+    portfolio: profile.portfolio,
   };
 }
 
