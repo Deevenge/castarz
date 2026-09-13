@@ -10,7 +10,7 @@ import { MobileTopBar } from "@/components/MobileTopBar";
 import { LogoLoader } from "@/components/LogoLoader";
 import { useAuth } from "@/context/AuthContext";
 import { useInbox } from "@/hooks/useInbox";
-import logo from "@/app/images/logoz.gif";
+import logo from "@/app/images/logoz.png";
 import { db } from "@/lib/firebase";
 
 const links = [
@@ -55,7 +55,7 @@ export default function ActorLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-dvh bg-brand-ice text-brand-navy">
       <aside className="fixed inset-y-0 left-0 hidden w-72 flex-col border-r border-brand-silver/70 bg-white px-5 py-7 lg:flex">
-        <Image src={logo} alt="CASTARZ" className="h-auto w-48" priority unoptimized />
+        <Image src={logo} alt="CASTARZ" className="h-auto w-48" priority />
         <div className="mt-10 rounded-2xl bg-brand-ice p-4">
           <div className="flex size-11 items-center justify-center rounded-full bg-brand-blue text-white"><UserRound className="size-5" /></div>
           <p className="mt-3 truncate font-semibold">{actorName || "Complete your profile"}</p>
