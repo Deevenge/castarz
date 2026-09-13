@@ -9,6 +9,7 @@ import { Bell, BriefcaseBusiness, ClipboardCheck, LayoutDashboard, LogOut, Setti
 import { MobileTopBar } from "@/components/MobileTopBar";
 import { LogoLoader } from "@/components/LogoLoader";
 import { useAuth } from "@/context/AuthContext";
+import { useChats } from "@/hooks/useChats";
 import { useInbox } from "@/hooks/useInbox";
 import { db } from "@/lib/firebase";
 import logo from "@/app/images/logoz.png";
@@ -36,6 +37,8 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { loading, profile, signOut } = useAuth();
   const { unreadCount } = useInbox();
+  const { unreadChatCount } = useChats();
+  const totalUnread = unreadCount + unreadChatCount;
   const [agencyName, setAgencyName] = useState("");
   const [agencyPhoto, setAgencyPhoto] = useState("");
 
@@ -80,7 +83,7 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
             </Link>
           ))}
           <Link href="/agent/inbox" className={`flex min-h-12 items-center gap-3 rounded-xl px-4 text-sm font-semibold ${pathname === "/agent/inbox" ? "bg-brand-blue text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}>
-            <span className="relative"><Bell className="size-5" /><UnreadDot count={unreadCount} /></span>
+            <span className="relative"><Bell className="size-5" /><UnreadDot count={totalUnread} /></span>
             Inbox
           </Link>
         </nav>
@@ -93,7 +96,7 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
         extra={
           <Link href="/agent/inbox" className="relative flex size-11 items-center justify-center rounded-xl bg-brand-ice text-brand-navy" aria-label="Inbox">
             <Bell className="size-5" />
-            <UnreadDot count={unreadCount} />
+            <UnreadDot count={totalUnread} />
           </Link>
         }
       />

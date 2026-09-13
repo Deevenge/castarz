@@ -1,6 +1,6 @@
 "use client";
 
-import { arrayUnion, collection, doc, serverTimestamp, setDoc, updateDoc, addDoc } from "firebase/firestore";
+import { addDoc, arrayUnion, collection, doc, getDoc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 export interface ConversationSeed {
@@ -20,6 +20,9 @@ export function conversationIdFor(agencyId: string, actorUid: string) {
 export async function ensureConversation(seed: ConversationSeed) {
   const conversationId = conversationIdFor(seed.agencyId, seed.actorUid);
   const conversationRef = doc(db, "conversations", conversationId);
+  const existing = await getDoc(conversationRef);
+
+  if (existing.exists()) return conversationId;
 
   await setDoc(conversationRef, {
     agencyId: seed.agencyId,

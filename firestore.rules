@@ -251,5 +251,90 @@ service cloud.firestore {
         && resource.data.recipientUid == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
     }
+
+    match /conversations/{conversationId} {
+      function isParticipant() {
+        return signedIn() && resource.data.participantUids.hasAny([request.auth.uid]);
+      }
+      function validConversationParticipants() {
+        return request.resource.data.agencyId is string
+          && request.resource.data.actorUid is string
+          && conversationId == request.resource.data.agencyId + '_' + request.resource.data.actorUid
+          && request.resource.data.participantUids is list
+          && request.resource.data.participantUids.hasAll([request.resource.data.agencyId, request.resource.data.actorUid])
+          && request.resource.data.participantUids.hasOnly([request.resource.data.agencyId, request.resource.data.actorUid])
+          && request.resource.data.participantUids.hasAny([request.auth.uid])
+          && approvedConnection(request.resource.data.agencyId, request.resource.data.actorUid);
+      }
+      function validConversationShape() {
+        return request.resource.data.agencyName is string
+          && request.resource.data.agencyName.size() <= 120
+          && request.resource.data.agencyPhoto is string
+          && request.resource.data.actorName is string
+          && request.resource.data.actorName.size() <= 120
+          && request.resource.data.actorPhoto is string
+          && request.resource.data.readBy is list
+          && request.resource.data.readBy.hasOnly(request.resource.data.participantUids)
+          && request.resource.data.lastMessage is string
+          && request.resource.data.lastMessage.size() <= 1000
+          && request.resource.data.lastSenderUid is string;
+      }
+      function unchangedConversationPeople() {
+        return unchanged('agencyId')
+          && unchanged('actorUid')
+          && unchanged('agencyName')
+          && unchanged('agencyPhoto')
+          && unchanged('actorName')
+          && unchanged('actorPhoto')
+          && unchanged('participantUids');
+      }
+      function validConversationReadBy() {
+        return request.resource.data.readBy is list
+          && request.resource.data.readBy.hasOnly(resource.data.participantUids)
+          && request.resource.data.readBy.hasAny([request.auth.uid]);
+      }
+
+      allow get: if signedIn()
+        && (
+          !exists(/databases/$(database)/documents/conversations/$(conversationId))
+          || resource.data.participantUids.hasAny([request.auth.uid])
+        );
+      allow list: if isParticipant();
+      allow create: if signedIn()
+        && validConversationParticipants()
+        && validConversationShape();
+      allow update: if isParticipant()
+        && unchangedConversationPeople()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastMessage', 'lastSenderUid', 'lastMessageAt', 'updatedAt', 'readBy'])
+        && validConversationReadBy()
+        && (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy'])
+          || (
+            request.resource.data.lastSenderUid == request.auth.uid
+            && request.resource.data.lastMessage is string
+            && request.resource.data.lastMessage.size() > 0
+            && request.resource.data.lastMessage.size() <= 1000
+          )
+        );
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        function parentConversation() {
+          return get(/databases/$(database)/documents/conversations/$(conversationId)).data;
+        }
+        function isMessageParticipant() {
+          return signedIn() && parentConversation().participantUids.hasAny([request.auth.uid]);
+        }
+
+        allow read: if isMessageParticipant();
+        allow create: if isMessageParticipant()
+          && request.resource.data.senderUid == request.auth.uid
+          && request.resource.data.type == 'text'
+          && request.resource.data.body is string
+          && request.resource.data.body.size() > 0
+          && request.resource.data.body.size() <= 1000;
+        allow update, delete: if false;
+      }
+    }
   }
 }

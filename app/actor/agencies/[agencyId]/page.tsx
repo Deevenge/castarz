@@ -5,6 +5,7 @@ import { Check, CheckCircle2, Clock3, LoaderCircle, MapPin, Send, UserMinus, Wal
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { AgencyHeroCard, LoadingScreen, ProfileTabs } from "@/components/ProfileChrome";
+import { StartChatButton } from "@/components/StartChatButton";
 import { useAuth } from "@/context/AuthContext";
 import { briefFromDocument, type AgentBrief } from "@/lib/agent-data";
 import { requestAgencyConnection, withdrawAgencyConnection, type ConnectionStatus } from "@/lib/connections";
@@ -24,6 +25,7 @@ export default function AgencyPublicPage() {
   const [working, setWorking] = useState(false);
   const [applyingId, setApplyingId] = useState("");
   const [actorName, setActorName] = useState("An actor");
+  const [actorPhoto, setActorPhoto] = useState("");
   const [notice, setNotice] = useState("");
   const [missing, setMissing] = useState(false);
 
@@ -38,8 +40,10 @@ export default function AgencyPublicPage() {
   useEffect(() => {
     if (!user) return;
     const stopActor = onSnapshot(doc(db, "actors", user.uid), (snapshot) => {
-      const name = snapshot.data()?.fullName;
+      const data = snapshot.data();
+      const name = data?.stageName || data?.fullName;
       if (typeof name === "string" && name.trim()) setActorName(name);
+      setActorPhoto(typeof data?.headshot === "string" ? data.headshot : "");
     });
     const stopApps = onSnapshot(query(collection(db, "applications"), where("actorUid", "==", user.uid)), (snapshot) => {
       setAppliedIds(snapshot.docs.map((item) => item.data().briefId).filter((id): id is string => typeof id === "string"));
@@ -126,8 +130,21 @@ export default function AgencyPublicPage() {
         photo={agency.photo}
         backHref="/actor/network"
         actions={
-          status === "approved" ? (
-            <span className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-50 px-4 text-sm font-bold text-emerald-700"><Check className="size-4" />Connected</span>
+          status === "approved" && user ? (
+            <div className="flex flex-wrap gap-2">
+              <StartChatButton
+                seed={{
+                  agencyId: agency.id,
+                  agencyName: agency.name,
+                  agencyPhoto: agency.photo,
+                  actorUid: user.uid,
+                  actorName,
+                  actorPhoto,
+                }}
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-navy px-4 text-sm font-bold text-white shadow-lg shadow-brand-navy/15 hover:bg-brand-blue"
+              />
+              <span className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-50 px-4 text-sm font-bold text-emerald-700"><Check className="size-4" />Connected</span>
+            </div>
           ) : status === "pending" ? (
             <button type="button" disabled={working} onClick={() => void withdraw()} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 px-4 text-sm font-bold text-slate-600">
               {working ? <LoaderCircle className="size-4 animate-spin" /> : <UserMinus className="size-4" />}Withdraw

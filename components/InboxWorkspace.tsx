@@ -1,10 +1,15 @@
 "use client";
 
-import { Bell, CheckCircle2, Handshake, LoaderCircle, MessageCircle, Sparkles, UserPlus } from "lucide-react";
+import { ArrowUpRight, Bell, CheckCircle2, Handshake, LoaderCircle, MessageCircle, Search, Send, Sparkles, UserPlus } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { doc, updateDoc } from "firebase/firestore";
-import { useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { type InboxItem, useInbox } from "@/hooks/useInbox";
+import { type ChatConversation, useChatMessages, useChats } from "@/hooks/useChats";
+import { markConversationRead, sendChatMessage } from "@/lib/chat";
 import { db } from "@/lib/firebase";
 import type { NotificationType } from "@/lib/notify";
 
@@ -30,6 +35,12 @@ const icon: Record<NotificationType, typeof Bell> = {
   brief_closed: Handshake,
 };
 
+const quickPrompts = [
+  "Hi, I would love to chat about availability and fit for your next brief.",
+  "Thanks for connecting. Can you share what kind of roles you are currently casting?",
+  "Great profile. Are you available for a quick casting conversation this week?",
+];
+
 function timeLabel(ms: number) {
   if (!ms) return "Just now";
   const delta = Date.now() - ms;
@@ -43,16 +54,57 @@ function timeLabel(ms: number) {
   return new Date(ms).toLocaleDateString();
 }
 
-export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; title: string; empty: string }) {
-  const { items, loading, error } = useInbox();
-  const [tab, setTab] = useState<"inbox" | "notifications">("inbox");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const displayedItems = tab === "inbox" ? items.filter((item) => !item.read) : items;
-  const selected = displayedItems.find((item) => item.id === selectedId) ?? displayedItems[0] ?? null;
-  const unread = items.filter((item) => !item.read).length;
+function initials(name: string) {
+  return name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "CA";
+}
 
-  async function openItem(item: InboxItem) {
-    setSelectedId(item.id);
+function otherParty(conversation: ChatConversation, uid: string) {
+  const isAgent = uid === conversation.agencyId;
+  return {
+    name: isAgent ? conversation.actorName : conversation.agencyName,
+    photo: isAgent ? conversation.actorPhoto : conversation.agencyPhoto,
+    role: isAgent ? "Actor" : "Agency",
+    profileHref: isAgent ? `/agent/talent/${conversation.actorUid}` : `/actor/agencies/${conversation.agencyId}`,
+  };
+}
+
+export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; title: string; empty: string }) {
+  const searchParams = useSearchParams();
+  const requestedChat = searchParams.get("chat") ?? "";
+  const { user } = useAuth();
+  const [tab, setTab] = useState<"chats" | "notifications">("chats");
+  const [selectedChatId, setSelectedChatId] = useState("");
+  const [selectedNotificationId, setSelectedNotificationId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const { items, loading: notificationsLoading, error: notificationsError, unreadCount } = useInbox();
+  const { conversations, loading: chatsLoading, error: chatsError, unreadChatCount } = useChats();
+  const requestedOrSelectedChat = requestedChat || selectedChatId;
+  const activeChatId = conversations.some((item) => item.id === requestedOrSelectedChat) ? requestedOrSelectedChat : conversations[0]?.id || "";
+  const { messages, messagesLoading, messagesError } = useChatMessages(activeChatId);
+  const selectedChat = conversations.find((item) => item.id === activeChatId) ?? conversations[0] ?? null;
+  const selectedNotification = items.find((item) => item.id === selectedNotificationId) ?? items[0] ?? null;
+  const activeConversationId = selectedChat?.id ?? "";
+
+  const filteredConversations = useMemo(() => {
+    if (!user) return [];
+    const needle = search.trim().toLowerCase();
+    return conversations.filter((conversation) => {
+      const party = otherParty(conversation, user.uid);
+      return !needle || `${party.name} ${party.role} ${conversation.lastMessage}`.toLowerCase().includes(needle);
+    });
+  }, [conversations, search, user]);
+
+  useEffect(() => {
+    if (!user || !selectedChat) return;
+    if (selectedChat.lastSenderUid && selectedChat.lastSenderUid !== user.uid && !selectedChat.readBy.includes(user.uid)) {
+      void markConversationRead(selectedChat.id, user.uid);
+    }
+  }, [selectedChat, user]);
+
+  async function openNotification(item: InboxItem) {
+    setSelectedNotificationId(item.id);
     if (item.read) return;
     try {
       await updateDoc(doc(db, "notifications", item.id), { read: true });
@@ -61,58 +113,150 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
     }
   }
 
-  if (loading) return <div className="flex min-h-[50vh] items-center justify-center"><LoaderCircle className="size-7 animate-spin text-brand-blue" /></div>;
+  async function submitMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!user || !activeConversationId || !draft.trim()) return;
+    setSending(true);
+    try {
+      await sendChatMessage(activeConversationId, user.uid, draft);
+      setDraft("");
+    } finally {
+      setSending(false);
+    }
+  }
 
-  const emptyTitle = tab === "inbox" ? "Inbox is clear" : "No notifications yet";
+  if (chatsLoading || notificationsLoading) {
+    return <div className="flex min-h-[50vh] items-center justify-center"><LoaderCircle className="size-7 animate-spin text-brand-blue" /></div>;
+  }
 
   return (
-    <div className="mx-auto max-w-5xl">
-      <header className="mb-7">
-        <p className="text-sm font-bold tracking-[0.18em] text-brand-blue">{eyebrow}</p>
-        <h1 className="mt-1 text-3xl font-bold tracking-tight">{title}</h1>
-        <p className="mt-2 text-slate-600">Live updates from connections, applications, and bookings.</p>
+    <div className="mx-auto max-w-6xl">
+      <header className="mb-7 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-sm font-bold tracking-[0.18em] text-brand-blue">{eyebrow}</p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight">{title}</h1>
+          <p className="mt-2 max-w-2xl text-slate-600">Private casting conversations, smart follow-ups, and every important update in one polished workspace.</p>
+        </div>
+        <div className="rounded-2xl bg-brand-navy px-4 py-3 text-sm font-bold text-white shadow-lg shadow-brand-navy/15">
+          {unreadChatCount + unreadCount} unread
+        </div>
       </header>
+
       <div className="mb-5 grid grid-cols-2 rounded-2xl bg-white p-1.5 shadow-sm ring-1 ring-brand-silver/70">
-        <button type="button" onClick={() => setTab("inbox")} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${tab === "inbox" ? "bg-brand-navy text-white shadow-sm" : "text-slate-500 hover:bg-brand-ice"}`}>
-          <MessageCircle className="size-4" />Inbox
+        <button type="button" onClick={() => setTab("chats")} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${tab === "chats" ? "bg-brand-navy text-white shadow-sm" : "text-slate-500 hover:bg-brand-ice"}`}>
+          <MessageCircle className="size-4" />Chats
+          {unreadChatCount > 0 && <span className="rounded-full bg-brand-cyan px-1.5 text-[10px] leading-4 text-brand-navy">{unreadChatCount > 9 ? "9+" : unreadChatCount}</span>}
         </button>
         <button type="button" onClick={() => setTab("notifications")} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${tab === "notifications" ? "bg-brand-navy text-white shadow-sm" : "text-slate-500 hover:bg-brand-ice"}`}>
-          <span className="relative"><Bell className="size-4" />{unread > 0 && <span className="absolute -right-2 -top-2 min-w-4 rounded-full bg-brand-cyan px-1 text-[10px] leading-4 text-brand-navy">{unread > 9 ? "9+" : unread}</span>}</span>
-          Notifications
+          <Bell className="size-4" />Notifications
+          {unreadCount > 0 && <span className="rounded-full bg-brand-cyan px-1.5 text-[10px] leading-4 text-brand-navy">{unreadCount > 9 ? "9+" : unreadCount}</span>}
         </button>
       </div>
 
-      {error ? (
-        <div className="rounded-3xl border border-red-100 bg-red-50 p-8 text-center text-red-700 shadow-sm">
-          <Bell className="mx-auto size-9" />
-          <h2 className="mt-4 text-xl font-bold">Inbox unavailable</h2>
-          <p className="mx-auto mt-2 max-w-md text-sm">{error}</p>
-        </div>
-      ) : !displayedItems.length ? (
-        <div className="rounded-3xl border-2 border-dashed border-brand-silver bg-white p-10 text-center">
-          {tab === "inbox" ? <MessageCircle className="mx-auto size-9 text-brand-blue" /> : <Bell className="mx-auto size-9 text-brand-blue" />}
-          <h2 className="mt-4 text-xl font-bold">{emptyTitle}</h2>
+      {tab === "chats" ? (
+        chatsError ? (
+          <ErrorPanel icon={MessageCircle} title="Chats unavailable" body={chatsError} />
+        ) : !conversations.length ? (
+          <EmptyChatPanel />
+        ) : (
+          <div className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-brand-silver/70 lg:grid lg:min-h-[640px] lg:grid-cols-[360px_minmax(0,1fr)]">
+            <aside className="border-b border-brand-silver/70 bg-white lg:border-b-0 lg:border-r">
+              <div className="border-b border-brand-silver/70 p-4">
+                <label className="relative block">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                  <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search conversations" className="min-h-11 w-full rounded-2xl border border-slate-200 bg-brand-ice/60 pl-10 pr-4 text-sm outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
+                </label>
+              </div>
+              <div className="max-h-[420px] overflow-y-auto lg:max-h-[580px]">
+                {filteredConversations.map((conversation) => {
+                  if (!user) return null;
+                  const party = otherParty(conversation, user.uid);
+                  const unread = Boolean(conversation.lastSenderUid && conversation.lastSenderUid !== user.uid && !conversation.readBy.includes(user.uid));
+                  const active = conversation.id === selectedChat?.id;
+                  return (
+                    <button key={conversation.id} type="button" onClick={() => setSelectedChatId(conversation.id)} className={`flex w-full gap-3 border-b border-slate-100 p-4 text-left transition ${active ? "bg-brand-ice" : "hover:bg-slate-50"}`}>
+                      <Avatar name={party.name} photo={party.photo} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="truncate font-bold text-brand-navy">{party.name}</p>
+                          <span className="text-xs text-slate-400">{timeLabel(conversation.lastMessageAtMs || conversation.updatedAtMs)}</span>
+                        </div>
+                        <p className="mt-0.5 text-xs font-bold uppercase tracking-[0.16em] text-brand-blue">{party.role}</p>
+                        <p className={`mt-1 truncate text-sm ${unread ? "font-bold text-brand-navy" : "text-slate-500"}`}>{conversation.lastMessage || "Conversation ready"}</p>
+                      </div>
+                      {unread && <span className="mt-2 size-2.5 rounded-full bg-brand-blue" />}
+                    </button>
+                  );
+                })}
+                {!filteredConversations.length && <p className="p-6 text-center text-sm text-slate-500">No conversations match that search.</p>}
+              </div>
+            </aside>
+
+            {selectedChat && user && (
+              <section className="flex min-h-[620px] flex-col bg-[#fbfcff]">
+                <ChatHeader conversation={selectedChat} uid={user.uid} />
+                <div className="flex-1 space-y-4 overflow-y-auto px-4 py-5 sm:px-6">
+                  {messagesLoading ? (
+                    <div className="flex min-h-60 items-center justify-center"><LoaderCircle className="size-6 animate-spin text-brand-blue" /></div>
+                  ) : messagesError ? (
+                    <ErrorPanel icon={MessageCircle} title="Messages unavailable" body={messagesError} />
+                  ) : messages.length ? (
+                    messages.map((message) => {
+                      const mine = message.senderUid === user.uid;
+                      return (
+                        <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                          <div className={`max-w-[82%] rounded-3xl px-4 py-3 shadow-sm sm:max-w-[70%] ${mine ? "rounded-br-md bg-brand-blue text-white" : "rounded-bl-md bg-white text-slate-700 ring-1 ring-brand-silver/70"}`}>
+                            <p className="whitespace-pre-wrap leading-6">{message.body}</p>
+                            <p className={`mt-1 text-right text-[11px] ${mine ? "text-white/70" : "text-slate-400"}`}>{timeLabel(message.createdAtMs)}</p>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="mx-auto flex max-w-xl flex-col items-center justify-center py-10 text-center">
+                      <div className="flex size-16 items-center justify-center rounded-3xl bg-brand-navy text-brand-cyan shadow-lg shadow-brand-navy/15"><Sparkles className="size-7" /></div>
+                      <h2 className="mt-5 text-2xl font-bold text-brand-navy">Start with intent</h2>
+                      <p className="mt-2 text-slate-600">Make the first message specific, warm, and casting-ready.</p>
+                    </div>
+                  )}
+                </div>
+                <div className="border-t border-brand-silver/70 bg-white p-4 sm:p-5">
+                  <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+                    {quickPrompts.map((prompt) => (
+                      <button key={prompt} type="button" onClick={() => setDraft(prompt)} className="min-h-9 shrink-0 rounded-full border border-brand-silver bg-brand-ice/70 px-3 text-xs font-bold text-brand-navy hover:border-brand-cyan hover:bg-white">
+                        {prompt.slice(0, 42)}...
+                      </button>
+                    ))}
+                  </div>
+                  <form onSubmit={submitMessage} className="flex items-end gap-2">
+                    <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={1} maxLength={1000} placeholder="Write a polished casting message..." className="min-h-12 flex-1 resize-none rounded-2xl border border-slate-200 bg-brand-ice/50 px-4 py-3 text-sm outline-none focus:border-brand-blue focus:bg-white focus:ring-4 focus:ring-brand-cyan/20" />
+                    <button type="submit" disabled={sending || !draft.trim()} className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-brand-navy text-white shadow-lg shadow-brand-navy/15 transition hover:bg-brand-blue disabled:cursor-not-allowed disabled:opacity-45" aria-label="Send message">
+                      {sending ? <LoaderCircle className="size-5 animate-spin" /> : <Send className="size-5" />}
+                    </button>
+                  </form>
+                </div>
+              </section>
+            )}
+          </div>
+        )
+      ) : notificationsError ? (
+        <ErrorPanel icon={Bell} title="Inbox unavailable" body={notificationsError} />
+      ) : !items.length ? (
+        <div className="rounded-[28px] border-2 border-dashed border-brand-silver bg-white p-10 text-center">
+          <Bell className="mx-auto size-9 text-brand-blue" />
+          <h2 className="mt-4 text-xl font-bold">No notifications yet</h2>
           <p className="mt-2 text-slate-600">{empty}</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-brand-silver/70 md:grid md:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.3fr)]">
+        <div className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-brand-silver/70 md:grid md:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.3fr)]">
           <section className="border-b border-brand-silver/60 md:border-b-0 md:border-r">
-            <div className="border-b border-brand-silver/60 px-5 py-4">
-              <h2 className="font-bold">{tab === "inbox" ? "Unread inbox" : "Notifications"}</h2>
-            </div>
-            {displayedItems.map((item) => {
+            <div className="border-b border-brand-silver/60 px-5 py-4"><h2 className="font-bold">Notifications</h2></div>
+            {items.map((item) => {
               const Icon = icon[item.type];
-              const active = selected?.id === item.id;
+              const active = selectedNotification?.id === item.id;
               return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => void openItem(item)}
-                  className={`flex w-full items-center gap-3 border-b border-slate-100 p-4 text-left transition ${active ? "bg-brand-ice" : "hover:bg-slate-50"}`}
-                >
-                  <div className={`flex size-11 shrink-0 items-center justify-center rounded-2xl ${tone[item.type]}`}>
-                    <Icon className="size-5" />
-                  </div>
+                <button key={item.id} type="button" onClick={() => void openNotification(item)} className={`flex w-full items-center gap-3 border-b border-slate-100 p-4 text-left transition ${active ? "bg-brand-ice" : "hover:bg-slate-50"}`}>
+                  <div className={`flex size-11 shrink-0 items-center justify-center rounded-2xl ${tone[item.type]}`}><Icon className="size-5" /></div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <p className="truncate font-bold text-brand-navy">{item.title}</p>
@@ -125,39 +269,102 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
               );
             })}
           </section>
-          {selected && (
-            <article className="flex min-h-[380px] flex-col p-6 sm:p-8">
-              <div className="flex items-center gap-3 border-b border-brand-silver/60 pb-5">
-                <div className={`flex size-12 items-center justify-center rounded-2xl ${tone[selected.type]}`}>
-                  {(() => { const Icon = icon[selected.type]; return <Icon className="size-5" />; })()}
-                </div>
-                <div>
-                  <p className="font-bold text-brand-navy">{selected.title}</p>
-                  <p className="text-sm text-slate-500">{timeLabel(selected.createdAtMs)}</p>
-                </div>
-              </div>
-              <div className="mt-7 max-w-lg rounded-2xl rounded-tl-sm bg-brand-ice p-5">
-                <p className="leading-6 text-slate-700">{selected.body}</p>
-              </div>
-              {selected.href && (
-                selected.href.startsWith("http") ? (
-                  <div className="mt-6 max-w-lg rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-                    <p className="text-sm font-bold text-emerald-800">Booked cast communication</p>
-                    <a href={selected.href} target="_blank" rel="noreferrer" className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white hover:bg-emerald-700">
-                      <MessageCircle className="size-4" />Join WhatsApp group
-                    </a>
-                    <p className="mt-2 break-all text-xs text-emerald-700">{selected.href}</p>
-                  </div>
-                ) : (
-                  <Link href={selected.href} className="mt-6 inline-flex min-h-11 w-fit items-center rounded-xl bg-brand-navy px-4 text-sm font-bold text-white hover:bg-brand-blue">
-                    Open related workspace
-                  </Link>
-                )
-              )}
-            </article>
-          )}
+          {selectedNotification && <NotificationDetail item={selectedNotification} />}
         </div>
       )}
     </div>
+  );
+}
+
+function Avatar({ name, photo }: { name: string; photo: string }) {
+  return (
+    <div className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-brand-navy text-sm font-extrabold text-brand-cyan">
+      {photo ? <Image src={photo} alt="" fill unoptimized className="object-cover" /> : initials(name)}
+    </div>
+  );
+}
+
+function ChatHeader({ conversation, uid }: { conversation: ChatConversation; uid: string }) {
+  const party = otherParty(conversation, uid);
+  return (
+    <header className="flex items-center justify-between gap-3 border-b border-brand-silver/70 bg-white px-4 py-4 sm:px-6">
+      <div className="flex min-w-0 items-center gap-3">
+        <Avatar name={party.name} photo={party.photo} />
+        <div className="min-w-0">
+          <h2 className="truncate text-lg font-bold text-brand-navy">{party.name}</h2>
+          <p className="text-sm font-semibold text-slate-500">{party.role} conversation</p>
+        </div>
+      </div>
+      <Link href={party.profileHref} className="flex min-h-10 shrink-0 items-center gap-2 rounded-xl border border-brand-silver px-3 text-sm font-bold text-brand-navy hover:bg-brand-ice">
+        Profile <ArrowUpRight className="size-4" />
+      </Link>
+    </header>
+  );
+}
+
+function EmptyChatPanel() {
+  return (
+    <section className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-brand-silver/70">
+      <div className="grid gap-0 lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="bg-brand-navy p-8 text-white sm:p-10">
+          <div className="flex size-16 items-center justify-center rounded-3xl bg-brand-cyan text-brand-navy shadow-xl shadow-black/10"><MessageCircle className="size-8" /></div>
+          <h2 className="mt-7 text-3xl font-bold tracking-tight">Start the conversation where the casting decision happens.</h2>
+          <p className="mt-4 leading-7 text-slate-300">Open an agency or actor profile and use the Message button. CASTARZ will create a private thread instantly for connected talent and agencies.</p>
+        </div>
+        <div className="p-8 sm:p-10">
+          <p className="text-sm font-bold tracking-[0.18em] text-brand-blue">CASTING CHAT</p>
+          <div className="mt-5 space-y-3">
+            {["Profile-first messaging", "Unread conversation tracking", "Quick prompts for professional openers", "Booking links and notifications beside chats"].map((item) => (
+              <div key={item} className="flex items-center gap-3 rounded-2xl bg-brand-ice/70 p-4 font-semibold text-brand-navy">
+                <CheckCircle2 className="size-5 text-brand-blue" />{item}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ErrorPanel({ icon: Icon, title, body }: { icon: typeof Bell; title: string; body: string }) {
+  return (
+    <div className="rounded-[28px] border border-red-100 bg-red-50 p-8 text-center text-red-700 shadow-sm">
+      <Icon className="mx-auto size-9" />
+      <h2 className="mt-4 text-xl font-bold">{title}</h2>
+      <p className="mx-auto mt-2 max-w-md text-sm">{body}</p>
+    </div>
+  );
+}
+
+function NotificationDetail({ item }: { item: InboxItem }) {
+  const Icon = icon[item.type];
+  return (
+    <article className="flex min-h-[380px] flex-col p-6 sm:p-8">
+      <div className="flex items-center gap-3 border-b border-brand-silver/60 pb-5">
+        <div className={`flex size-12 items-center justify-center rounded-2xl ${tone[item.type]}`}><Icon className="size-5" /></div>
+        <div>
+          <p className="font-bold text-brand-navy">{item.title}</p>
+          <p className="text-sm text-slate-500">{timeLabel(item.createdAtMs)}</p>
+        </div>
+      </div>
+      <div className="mt-7 max-w-lg rounded-2xl rounded-tl-sm bg-brand-ice p-5">
+        <p className="leading-6 text-slate-700">{item.body}</p>
+      </div>
+      {item.href && (
+        item.href.startsWith("http") ? (
+          <div className="mt-6 max-w-lg rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+            <p className="text-sm font-bold text-emerald-800">Booked cast communication</p>
+            <a href={item.href} target="_blank" rel="noreferrer" className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white hover:bg-emerald-700">
+              <MessageCircle className="size-4" />Join WhatsApp group
+            </a>
+            <p className="mt-2 break-all text-xs text-emerald-700">{item.href}</p>
+          </div>
+        ) : (
+          <Link href={item.href} className="mt-6 inline-flex min-h-11 w-fit items-center rounded-xl bg-brand-navy px-4 text-sm font-bold text-white hover:bg-brand-blue">
+            Open related workspace
+          </Link>
+        )
+      )}
+    </article>
   );
 }

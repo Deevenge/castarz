@@ -33,14 +33,11 @@ function toMillis(value: unknown) {
   return typeof (value as { toMillis?: unknown })?.toMillis === "function" ? (value as { toMillis: () => number }).toMillis() : 0;
 }
 
-export function useChats(activeConversationId?: string) {
+export function useChats() {
   const { user } = useAuth();
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadedUid, setLoadedUid] = useState("");
-  const [loadedMessagesFor, setLoadedMessagesFor] = useState("");
   const [error, setError] = useState("");
-  const [messagesError, setMessagesError] = useState("");
 
   useEffect(() => {
     if (!user) return;
@@ -77,6 +74,23 @@ export function useChats(activeConversationId?: string) {
     });
   }, [user]);
 
+  const visibleConversations = useMemo(() => user ? conversations.filter((item) => item.participantUids.includes(user.uid)) : [], [conversations, user]);
+  const unreadChatCount = useMemo(() => user ? visibleConversations.filter((item) => item.lastSenderUid && item.lastSenderUid !== user.uid && !item.readBy.includes(user.uid)).length : 0, [visibleConversations, user]);
+
+  return {
+    conversations: visibleConversations,
+    loading: user ? loadedUid !== user.uid && !error : false,
+    error: user ? error : "",
+    unreadChatCount,
+  };
+}
+
+export function useChatMessages(activeConversationId: string) {
+  const { user } = useAuth();
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [loadedMessagesFor, setLoadedMessagesFor] = useState("");
+  const [messagesError, setMessagesError] = useState("");
+
   useEffect(() => {
     if (!user || !activeConversationId) return;
 
@@ -103,16 +117,9 @@ export function useChats(activeConversationId?: string) {
     });
   }, [activeConversationId, user]);
 
-  const visibleConversations = useMemo(() => user ? conversations.filter((item) => item.participantUids.includes(user.uid)) : [], [conversations, user]);
-  const unreadChatCount = useMemo(() => user ? visibleConversations.filter((item) => item.lastSenderUid && item.lastSenderUid !== user.uid && !item.readBy.includes(user.uid)).length : 0, [visibleConversations, user]);
-
   return {
-    conversations: visibleConversations,
     messages: activeConversationId ? messages : [],
-    loading: user ? loadedUid !== user.uid && !error : false,
     messagesLoading: Boolean(user && activeConversationId && loadedMessagesFor !== activeConversationId && !messagesError),
-    error: user ? error : "",
     messagesError,
-    unreadChatCount,
   };
 }

@@ -5,10 +5,11 @@ import { Check, LoaderCircle, X } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ActorHeroCard, LoadingScreen, PhotoGrid, ProfileTabs, SpecChips } from "@/components/ProfileChrome";
+import { StartChatButton } from "@/components/StartChatButton";
 import { useAuth } from "@/context/AuthContext";
 import { albumCategories } from "@/lib/actor-profile";
 import { type ConnectionStatus } from "@/lib/connections";
-import { directoryActorFromData, type DirectoryActor } from "@/lib/directory";
+import { actorDisplayName, directoryActorFromData, type DirectoryActor } from "@/lib/directory";
 import { db } from "@/lib/firebase";
 import { notifyQuietly } from "@/lib/notify";
 
@@ -21,6 +22,8 @@ export default function TalentProfilePage() {
   const [working, setWorking] = useState(false);
   const [missing, setMissing] = useState(false);
   const [category, setCategory] = useState<(typeof albumCategories)[number]>("Formal");
+  const [agencyName, setAgencyName] = useState("CASTARZ Agency");
+  const [agencyPhoto, setAgencyPhoto] = useState("");
 
   useEffect(() => {
     if (!actorId) return;
@@ -36,6 +39,15 @@ export default function TalentProfilePage() {
       setStatus((snapshot.data()?.status as ConnectionStatus) || "");
     });
   }, [user, actorId]);
+
+  useEffect(() => {
+    if (!user) return;
+    return onSnapshot(doc(db, "agencies", user.uid), (snapshot) => {
+      const data = snapshot.data();
+      setAgencyName(typeof data?.name === "string" && data.name.trim() ? data.name : "CASTARZ Agency");
+      setAgencyPhoto(typeof data?.photo === "string" ? data.photo : "");
+    });
+  }, [user]);
 
   async function decide(next: "approved" | "declined") {
     if (!user || !actorId) return;
@@ -68,8 +80,21 @@ export default function TalentProfilePage() {
         actor={actor}
         backHref="/agent/network"
         actions={
-          status === "approved" ? (
-            <span className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-50 px-4 text-sm font-bold text-emerald-700"><Check className="size-4" />In your network</span>
+          status === "approved" && user && actorId ? (
+            <div className="flex flex-wrap gap-2">
+              <StartChatButton
+                seed={{
+                  agencyId: user.uid,
+                  agencyName,
+                  agencyPhoto,
+                  actorUid: actorId,
+                  actorName: actorDisplayName(actor),
+                  actorPhoto: actor.headshot,
+                }}
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-navy px-4 text-sm font-bold text-white shadow-lg shadow-brand-navy/15 hover:bg-brand-blue"
+              />
+              <span className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-50 px-4 text-sm font-bold text-emerald-700"><Check className="size-4" />In your network</span>
+            </div>
           ) : status === "pending" ? (
             <div className="flex gap-2">
               <button type="button" disabled={working} onClick={() => void decide("declined")} className="flex size-11 items-center justify-center rounded-xl border border-slate-300 text-slate-500"><X className="size-4" /></button>
