@@ -107,7 +107,7 @@ service cloud.firestore {
         && unchanged('agencyId')
         && unchanged('actorUid')
         && unchanged('briefId')
-        && request.resource.data.status in ['pending', 'standby', 'booked', 'rejected']
+        && request.resource.data.status in ['pending', 'standby', 'selected', 'booked', 'rejected']
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedAt', 'updatedAt']);
       allow delete: if isAgent()
         && resource.data.agencyId == request.auth.uid;

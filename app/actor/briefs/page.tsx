@@ -11,7 +11,7 @@ type Application = {
   id: string;
   briefId: string;
   agencyId: string;
-  status: "pending" | "standby" | "booked" | "rejected";
+  status: "pending" | "standby" | "selected" | "booked" | "rejected";
 };
 
 type Booking = {
@@ -129,9 +129,9 @@ export default function MyApplicationsPage() {
 }
 
 function Status({ status }: { status: Application["status"] }) {
-  const style = status === "booked" ? "bg-emerald-50 text-emerald-700" : status === "rejected" ? "bg-red-50 text-red-700" : status === "standby" ? "bg-amber-50 text-amber-700" : "bg-brand-ice text-brand-navy";
+  const style = status === "booked" ? "bg-emerald-50 text-emerald-700" : status === "rejected" ? "bg-red-50 text-red-700" : status === "standby" || status === "selected" ? "bg-amber-50 text-amber-700" : "bg-brand-ice text-brand-navy";
   const Icon = status === "booked" ? CheckCircle2 : status === "rejected" ? XCircle : Clock3;
-  return <span className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-sm font-bold ${style}`}><Icon className="size-4" />{status === "pending" ? "Under review" : status === "standby" ? "Shortlisted" : status === "booked" ? "Booked" : "Not selected"}</span>;
+  return <span className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-sm font-bold ${style}`}><Icon className="size-4" />{status === "pending" ? "Under review" : status === "standby" || status === "selected" ? "Shortlisted" : status === "booked" ? "Booked" : "Not selected"}</span>;
 }
 
 function statusCopy(status: Application["status"]) {
@@ -139,7 +139,7 @@ function statusCopy(status: Application["status"]) {
     ? "Congratulations, your agency has booked you for this brief. More final details should follow in less than 24hrs, so stay on the lookout for the WhatsApp link or production message."
     : status === "rejected"
       ? "The agency has completed this selection. Keep your profile current for the next opportunity."
-      : status === "standby"
+      : status === "standby" || status === "selected"
         ? "You have been shortlisted. Keep your availability close and stay on the lookout for the final booking update."
         : "Your application has been received and is waiting for agency review.";
 }
