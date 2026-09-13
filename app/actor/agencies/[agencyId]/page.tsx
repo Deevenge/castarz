@@ -1,6 +1,6 @@
 "use client";
 
-import { collection, doc, onSnapshot, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, serverTimestamp, setDoc, where } from "firebase/firestore";
 import { Check, CheckCircle2, Clock3, LoaderCircle, MapPin, Maximize2, Send, UserMinus, UsersRound, WalletCards } from "lucide-react";
 import Image from "next/image";
 import { useParams } from "next/navigation";
@@ -108,23 +108,7 @@ export default function AgencyPublicPage() {
     setNotice("");
     try {
       const applicationRef = doc(db, "applications", `${brief.id}_${user.uid}`);
-      let createdApplication = false;
-      await runTransaction(db, async (transaction) => {
-        const briefRef = doc(db, "briefs", brief.id);
-        const freshBrief = await transaction.get(briefRef);
-        if (!freshBrief.exists()) throw new Error("missing-brief");
-        const data = freshBrief.data();
-        const talentNeeded = typeof data.talentNeeded === "number" ? data.talentNeeded : 0;
-        const applicationCount = typeof data.applicationCount === "number" ? data.applicationCount : 0;
-        if (talentNeeded > 0 && applicationCount >= talentNeeded) throw new Error("brief-full");
-        transaction.set(applicationRef, { briefId: brief.id, actorUid: user.uid, agencyId: brief.agencyId, status: "pending", createdAt: serverTimestamp() });
-        transaction.update(briefRef, { applicationCount: applicationCount + 1, updatedAt: serverTimestamp() });
-        createdApplication = true;
-      });
-      if (!createdApplication) {
-        setNotice("You have already applied for this brief.");
-        return;
-      }
+      await setDoc(applicationRef, { briefId: brief.id, actorUid: user.uid, agencyId: brief.agencyId, status: "pending", createdAt: serverTimestamp() });
       await notifyQuietly({
         recipientUid: brief.agencyId,
         senderUid: user.uid,
@@ -134,13 +118,8 @@ export default function AgencyPublicPage() {
         href: "/agent/applications",
       });
       setNotice("Application sent. Your agent will review your profile and availability.");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      setNotice(message === "brief-full"
-        ? "This brief is full. The agency may close it soon."
-        : message.includes("already-exists")
-          ? "You have already applied for this brief."
-          : "We could not send your application. Please try again.");
+    } catch {
+      setNotice("We could not send your application. Please try again.");
     } finally {
       setApplyingId("");
     }
@@ -236,8 +215,6 @@ export default function AgencyPublicPage() {
           {visibleBriefs.map((brief) => {
             const applied = appliedIds.includes(brief.id);
             const loading = applyingId === brief.id;
-            const remaining = brief.talentNeeded ? Math.max(brief.talentNeeded - brief.applicationCount, 0) : 0;
-            const full = Boolean(brief.talentNeeded && remaining === 0);
             return (
               <AgencyBriefCard
                 key={brief.id}
@@ -245,8 +222,6 @@ export default function AgencyPublicPage() {
                 agency={agency}
                 applied={applied}
                 loading={loading}
-                full={full}
-                remaining={remaining}
                 onApply={() => void apply(brief)}
               />
             );
@@ -258,7 +233,7 @@ export default function AgencyPublicPage() {
   );
 }
 
-function AgencyBriefCard({ brief, agency, applied, loading, full, remaining, onApply }: { brief: AgentBrief; agency: DirectoryAgency; applied: boolean; loading: boolean; full: boolean; remaining: number; onApply: () => void }) {
+function AgencyBriefCard({ brief, agency, applied, loading, onApply }: { brief: AgentBrief; agency: DirectoryAgency; applied: boolean; loading: boolean; onApply: () => void }) {
   const [wardrobeOpen, setWardrobeOpen] = useState(false);
 
   return (
@@ -277,10 +252,10 @@ function AgencyBriefCard({ brief, agency, applied, loading, full, remaining, onA
       </div>
       {brief.description && <p className="mt-4 text-sm leading-6 text-slate-600">{brief.description}</p>}
       {brief.talentNeeded > 0 && (
-        <div className={`mt-4 flex flex-wrap items-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold ${full ? "bg-slate-100 text-slate-600" : "bg-brand-ice text-brand-navy"}`}>
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl bg-brand-ice px-4 py-3 text-sm font-bold text-brand-navy">
           <UsersRound className="size-4 text-brand-blue" />
-          <span>{full ? "Full" : `${remaining} ${remaining === 1 ? "spot" : "spots"} remaining`}</span>
-          <span className="text-slate-500">of {brief.talentNeeded} actors needed</span>
+          <span>{brief.talentNeeded} {brief.talentNeeded === 1 ? "role" : "roles"} requested</span>
+          <span className="text-slate-500">Applications stay open until the agency closes the brief.</span>
         </div>
       )}
       <div className="mt-4 flex flex-wrap gap-4 text-sm font-semibold text-slate-600">
@@ -304,9 +279,9 @@ function AgencyBriefCard({ brief, agency, applied, loading, full, remaining, onA
           )}
         </div>
       )}
-      <button type="button" disabled={applied || loading || full} onClick={onApply} className={`mt-4 flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold ${applied ? "bg-emerald-50 text-emerald-700" : full ? "bg-slate-100 text-slate-500" : "bg-brand-blue text-white"}`}>
+      <button type="button" disabled={applied || loading} onClick={onApply} className={`mt-4 flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold ${applied ? "bg-emerald-50 text-emerald-700" : "bg-brand-blue text-white"}`}>
         {loading ? <LoaderCircle className="size-4 animate-spin" /> : applied ? <CheckCircle2 className="size-4" /> : <Send className="size-4" />}
-        {applied ? "Applied" : full ? "Full" : loading ? "Applying..." : "Apply now"}
+        {applied ? "Applied" : loading ? "Applying..." : "Apply now"}
       </button>
       {brief.wardrobeImage && wardrobeOpen && <PhotoLightbox photo={brief.wardrobeImage} label="Wardrobe reference" close={() => setWardrobeOpen(false)} />}
     </article>

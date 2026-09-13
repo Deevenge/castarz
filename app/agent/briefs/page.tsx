@@ -89,19 +89,6 @@ export default function BriefsPage() {
     }, {});
   }, [applications]);
 
-  useEffect(() => {
-    if (!user || !briefs.length) return;
-    briefs.forEach((brief) => {
-      const actualCount = applicationsByBrief[brief.id]?.length ?? 0;
-      if (brief.applicationCount !== actualCount) {
-        void updateDoc(doc(db, "briefs", brief.id), {
-          applicationCount: actualCount,
-          updatedAt: serverTimestamp(),
-        }).catch(() => undefined);
-      }
-    });
-  }, [applicationsByBrief, briefs, user]);
-
   async function saveBrief(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!user || !profile) return;
@@ -112,11 +99,9 @@ export default function BriefsPage() {
       const agencyName = typeof agency.data()?.name === "string" && agency.data()?.name.trim() ? agency.data()?.name : profile.email;
       const agencyPhoto = typeof agency.data()?.photo === "string" ? agency.data()?.photo : "";
       const talentNeeded = Math.max(0, Number.parseInt(form.talentNeeded, 10) || 0);
-      const applicationCount = editingBrief ? Math.max(editingBrief.applicationCount, applicationsByBrief[editingBrief.id]?.length ?? 0) : 0;
       const payload = {
         ...form,
         talentNeeded,
-        applicationCount,
         agencyId: user.uid,
         agencyName,
         agencyPhoto,
@@ -331,11 +316,9 @@ export default function BriefsPage() {
 }
 
 function BriefCard({ brief, applications, onClose, onEdit, onDelete }: { brief: AgentBrief; applications: Application[]; onClose: () => void; onEdit: () => void; onDelete: () => void }) {
-  const appliedCount = Math.max(applications.length, brief.applicationCount);
+  const appliedCount = applications.length;
   const bookedCount = applications.filter((application) => application.status === "booked").length;
-  const remaining = brief.talentNeeded ? Math.max(brief.talentNeeded - appliedCount, 0) : 0;
-  const full = Boolean(brief.talentNeeded && remaining === 0);
-  const totalLabel = brief.talentNeeded ? (full ? `Full · ${brief.talentNeeded} spots` : `${remaining} spots remaining of ${brief.talentNeeded}`) : `${appliedCount} applied`;
+  const totalLabel = brief.talentNeeded ? `${brief.talentNeeded} ${brief.talentNeeded === 1 ? "role" : "roles"} requested · ${appliedCount} applied` : `${appliedCount} applied`;
   const statusTone = brief.status === "closed" ? "bg-slate-100 text-slate-600" : brief.status === "draft" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700";
 
   return (
@@ -350,8 +333,8 @@ function BriefCard({ brief, applications, onClose, onEdit, onDelete }: { brief: 
           <p className="mt-1 text-sm text-slate-600">{brief.production}</p>
         </div>
         <div className="rounded-2xl bg-brand-ice px-4 py-3 text-right">
-          <p className="text-2xl font-bold text-brand-navy">{brief.talentNeeded ? (full ? "Full" : remaining) : appliedCount}</p>
-          <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{brief.talentNeeded ? "Open spots" : "Applications"}</p>
+          <p className="text-2xl font-bold text-brand-navy">{appliedCount}</p>
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Applications</p>
         </div>
       </div>
       <div className="mt-5 flex flex-wrap gap-4 text-sm font-semibold text-slate-600">
@@ -395,7 +378,6 @@ function BriefCard({ brief, applications, onClose, onEdit, onDelete }: { brief: 
 
 function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: { brief: AgentBrief; applications: Application[]; senderUid: string; onClose: () => void; onDone: (message: string) => void }) {
   const booked = applications.filter((application) => application.status === "booked");
-  const remaining = Math.max((brief.talentNeeded || 0) - booked.length, 0);
   const [message, setMessage] = useState(`You are booked for ${brief.title}. Please join the WhatsApp group for shoot communication.`);
   const [whatsappLink, setWhatsappLink] = useState("");
   const [working, setWorking] = useState(false);
@@ -448,11 +430,11 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
           </div>
           <div className="border-r border-brand-silver/70 p-4">
             <p className="text-2xl font-bold text-brand-navy">{brief.talentNeeded || "Open"}</p>
-            <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Needed</p>
+            <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Roles</p>
           </div>
           <div className="p-4">
-            <p className="text-2xl font-bold text-brand-navy">{remaining}</p>
-            <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Remaining</p>
+            <p className="text-2xl font-bold text-brand-navy">{applications.length}</p>
+            <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Applied</p>
           </div>
         </div>
         <form onSubmit={closeBrief} className="mt-6 space-y-5">

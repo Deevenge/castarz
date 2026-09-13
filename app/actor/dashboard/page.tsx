@@ -1,6 +1,6 @@
 "use client";
 
-import { collection, doc, getDoc, onSnapshot, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, where } from "firebase/firestore";
 import Image from "next/image";
 import Link from "next/link";
 import { Bell, BriefcaseBusiness, Building2, CheckCircle2, Clock3, Grid3X3, LoaderCircle, MapPin, Maximize2, Send, Sparkles, UsersRound, WalletCards } from "lucide-react";
@@ -94,23 +94,7 @@ export default function ActorDashboardPage() {
     setNotice("");
     try {
       const applicationRef = doc(db, "applications", `${brief.id}_${user.uid}`);
-      let createdApplication = false;
-      await runTransaction(db, async (transaction) => {
-        const briefRef = doc(db, "briefs", brief.id);
-        const freshBrief = await transaction.get(briefRef);
-        if (!freshBrief.exists()) throw new Error("missing-brief");
-        const data = freshBrief.data();
-        const talentNeeded = typeof data.talentNeeded === "number" ? data.talentNeeded : 0;
-        const applicationCount = typeof data.applicationCount === "number" ? data.applicationCount : 0;
-        if (talentNeeded > 0 && applicationCount >= talentNeeded) throw new Error("brief-full");
-        transaction.set(applicationRef, { briefId: brief.id, actorUid: user.uid, agencyId: brief.agencyId, status: "pending", createdAt: serverTimestamp() });
-        transaction.update(briefRef, { applicationCount: applicationCount + 1, updatedAt: serverTimestamp() });
-        createdApplication = true;
-      });
-      if (!createdApplication) {
-        setNotice("You have already applied for this brief.");
-        return;
-      }
+      await setDoc(applicationRef, { briefId: brief.id, actorUid: user.uid, agencyId: brief.agencyId, status: "pending", createdAt: serverTimestamp() });
       await notifyQuietly({
         recipientUid: brief.agencyId,
         senderUid: user.uid,
@@ -120,13 +104,8 @@ export default function ActorDashboardPage() {
         href: "/agent/applications",
       });
       setNotice("Application sent. Your agent will review your profile and availability.");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      setNotice(message === "brief-full"
-        ? "This brief is full. The agency may close it soon."
-        : message.includes("already-exists")
-          ? "You have already applied for this brief."
-          : "We could not send your application. Please try again.");
+    } catch {
+      setNotice("We could not send your application. Please try again.");
     } finally {
       setApplyingId("");
     }
@@ -205,8 +184,6 @@ function TabButton({ active, icon: Icon, label, onClick }: { active: boolean; ic
 
 function BriefCard({ brief, accent, applied, loading, onApply }: { brief: AgentBrief; accent: string; applied: boolean; loading: boolean; onApply: () => void }) {
   const ageTags = brief.ageRange ? [brief.ageRange] : brief.requirements;
-  const remaining = brief.talentNeeded ? Math.max(brief.talentNeeded - brief.applicationCount, 0) : 0;
-  const full = Boolean(brief.talentNeeded && remaining === 0);
   const [fetchedAgencyPhoto, setFetchedAgencyPhoto] = useState("");
   const [wardrobeOpen, setWardrobeOpen] = useState(false);
   const agencyPhoto = brief.agencyPhoto || fetchedAgencyPhoto;
@@ -237,10 +214,10 @@ function BriefCard({ brief, accent, applied, loading, onApply }: { brief: AgentB
         <h3 className="mt-5 text-xl font-bold text-brand-navy">{brief.title}</h3>
         {brief.description && <p className="mt-2 text-sm leading-6 text-slate-600">{brief.description}</p>}
         {brief.talentNeeded > 0 && (
-          <div className={`mt-4 flex flex-wrap items-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold ${full ? "bg-slate-100 text-slate-600" : "bg-brand-ice text-brand-navy"}`}>
+          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl bg-brand-ice px-4 py-3 text-sm font-bold text-brand-navy">
             <UsersRound className="size-4 text-brand-blue" />
-            <span>{full ? "Full" : `${remaining} ${remaining === 1 ? "spot" : "spots"} remaining`}</span>
-            <span className="text-slate-500">of {brief.talentNeeded} actors needed</span>
+            <span>{brief.talentNeeded} {brief.talentNeeded === 1 ? "role" : "roles"} requested</span>
+            <span className="text-slate-500">Applications stay open until the agency closes the brief.</span>
           </div>
         )}
         {!!ageTags.length && (
@@ -271,9 +248,9 @@ function BriefCard({ brief, accent, applied, loading, onApply }: { brief: AgentB
             <span className="flex items-center gap-1"><WalletCards className="size-4 text-brand-blue" />{brief.rate || "Rate pending"}</span>
             <span className="flex items-center gap-1"><Clock3 className="size-4 text-brand-blue" />{briefDateLabel(brief)} · {briefCallTimeLabel(brief)}</span>
           </div>
-          <button type="button" onClick={onApply} disabled={applied || loading || full} className={`flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold ${applied ? "bg-emerald-50 text-emerald-700" : full ? "bg-slate-100 text-slate-500" : "bg-brand-blue text-white hover:bg-brand-navy"}`}>
+          <button type="button" onClick={onApply} disabled={applied || loading} className={`flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold ${applied ? "bg-emerald-50 text-emerald-700" : "bg-brand-blue text-white hover:bg-brand-navy"}`}>
             {loading ? <LoaderCircle className="size-4 animate-spin" /> : applied ? <CheckCircle2 className="size-4" /> : <Send className="size-4" />}
-            {applied ? "Applied" : full ? "Full" : loading ? "Applying..." : "Apply now"}
+            {applied ? "Applied" : loading ? "Applying..." : "Apply now"}
           </button>
         </div>
       </div>

@@ -23,7 +23,6 @@ export interface AgentBrief {
   status: BriefStatus;
   visibility: BriefVisibility;
   talentNeeded: number;
-  applicationCount: number;
   closeMessage: string;
   whatsappLink: string;
   createdAt?: Timestamp;
@@ -50,7 +49,6 @@ export function briefFromDocument(id: string, data: DocumentData): AgentBrief {
     status: data.status === "draft" || data.status === "closed" ? data.status : "published",
     visibility: data.visibility === "network" ? "network" : "public",
     talentNeeded: typeof data.talentNeeded === "number" && Number.isFinite(data.talentNeeded) ? data.talentNeeded : 0,
-    applicationCount: typeof data.applicationCount === "number" && Number.isFinite(data.applicationCount) ? data.applicationCount : 0,
     closeMessage: typeof data.closeMessage === "string" ? data.closeMessage : "",
     whatsappLink: typeof data.whatsappLink === "string" ? data.whatsappLink : "",
     createdAt: data.createdAt,
