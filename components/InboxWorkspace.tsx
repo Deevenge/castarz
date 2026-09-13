@@ -639,12 +639,24 @@ function ShootActorCard({ roomId, actor, close }: { roomId: string; actor: Shoot
   const specs = [profile.ageRange, profile.heightCm && `${profile.heightCm} cm`, profile.hairColor, profile.eyeColor].filter(Boolean);
   const albumPhotos = Object.entries(profile.albums ?? {}).flatMap(([category, photos]) => photos.map((photo) => ({ category, photo }))).slice(0, 8);
   return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-brand-navy/55 p-0 backdrop-blur-sm sm:items-center sm:p-6">
-      <article className="max-h-[94dvh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-brand-navy/55 p-0 backdrop-blur-sm sm:items-center sm:p-6" onClick={close}>
+      <article className="max-h-[94dvh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl" onClick={(event) => event.stopPropagation()}>
         <div className="relative min-h-56 overflow-hidden bg-brand-navy">
           {albumPhotos[0]?.photo ? <Image src={albumPhotos[0].photo} alt="" fill unoptimized className="object-cover opacity-35" /> : null}
           <div className="absolute inset-0 bg-brand-navy/55" />
-          <button type="button" onClick={close} className="absolute right-4 top-4 z-10 flex size-10 shrink-0 items-center justify-center rounded-full bg-white/90 text-brand-navy hover:bg-white" aria-label="Close z-card">
+          <button
+            type="button"
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              close();
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              close();
+            }}
+            className="absolute right-4 top-4 z-30 flex size-11 shrink-0 items-center justify-center rounded-full bg-white text-brand-navy shadow-xl ring-1 ring-white/70 hover:bg-brand-ice"
+            aria-label="Close z-card"
+          >
             <X className="size-5" />
           </button>
           <div className="relative z-10 flex min-h-56 items-end gap-4 p-6 text-white sm:p-8">

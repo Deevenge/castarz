@@ -1,7 +1,7 @@
 "use client";
 
 import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, where } from "firebase/firestore";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { normalizeActorProfile, type ActorProfile } from "@/lib/actor-profile";
@@ -114,6 +114,7 @@ export function useShootRooms() {
   const [rooms, setRooms] = useState<ShootRoom[]>([]);
   const [loadedUid, setLoadedUid] = useState("");
   const [error, setError] = useState("");
+  const hydratedOwnZCards = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!user) return;
@@ -151,6 +152,17 @@ export function useShootRooms() {
 
   const visibleRooms = useMemo(() => user ? rooms.filter((room) => room.participantUids.includes(user.uid) && !room.deletedFor.includes(user.uid)) : [], [rooms, user]);
   const unreadShootCount = useMemo(() => user ? visibleRooms.filter((room) => room.lastSenderUid && room.lastSenderUid !== user.uid && !room.readBy.includes(user.uid)).length : 0, [visibleRooms, user]);
+
+  useEffect(() => {
+    if (!user) return;
+    visibleRooms.forEach((room) => {
+      const ownSummary = room.actorSummaries.find((actor) => actor.uid === user.uid) ?? null;
+      const key = `${room.id}:${user.uid}`;
+      if (!ownSummary || zCardHasDetails(ownSummary) || hydratedOwnZCards.current.has(key)) return;
+      hydratedOwnZCards.current.add(key);
+      void hydrateActorZCard(room.id, ownSummary).catch(() => undefined);
+    });
+  }, [visibleRooms, user]);
 
   return {
     rooms: visibleRooms,

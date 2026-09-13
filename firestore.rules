@@ -85,6 +85,17 @@ service cloud.firestore {
     }
 
     match /applications/{applicationId} {
+      function actorHidesApplicationHistory() {
+        return isActor()
+          && resource.data.actorUid == request.auth.uid
+          && unchanged('agencyId')
+          && unchanged('actorUid')
+          && unchanged('briefId')
+          && unchanged('status')
+          && request.resource.data.actorDeleted == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['actorDeleted', 'actorDeletedAt']);
+      }
+
       allow create: if isActor()
         && request.resource.data.keys().hasOnly(['briefId', 'actorUid', 'agencyId', 'status', 'createdAt'])
         && request.resource.data.briefId is string
@@ -102,13 +113,14 @@ service cloud.firestore {
         );
       allow read: if signedIn()
         && (resource.data.actorUid == request.auth.uid || resource.data.agencyId == request.auth.uid);
-      allow update: if isAgent()
-        && resource.data.agencyId == request.auth.uid
-        && unchanged('agencyId')
-        && unchanged('actorUid')
-        && unchanged('briefId')
-        && request.resource.data.status in ['pending', 'standby', 'selected', 'booked', 'rejected']
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedAt', 'updatedAt']);
+      allow update: if (isAgent()
+          && resource.data.agencyId == request.auth.uid
+          && unchanged('agencyId')
+          && unchanged('actorUid')
+          && unchanged('briefId')
+          && request.resource.data.status in ['pending', 'standby', 'selected', 'booked', 'rejected']
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedAt', 'updatedAt']))
+        || actorHidesApplicationHistory();
       allow delete: if isAgent()
         && resource.data.agencyId == request.auth.uid;
     }
@@ -337,10 +349,15 @@ service cloud.firestore {
         }
 
         allow read: if isShootZCardParticipant();
-        allow create, update: if isAgent()
-          && parentShootRoomAfter().agencyId == request.auth.uid
-          && parentShootRoomAfter().participantUids.hasAny([actorUid])
-          && request.resource.data.uid == actorUid;
+        allow create, update: if request.resource.data.uid == actorUid
+          && (
+            (isAgent()
+              && parentShootRoomAfter().agencyId == request.auth.uid
+              && parentShootRoomAfter().participantUids.hasAny([actorUid]))
+            || (signedIn()
+              && request.auth.uid == actorUid
+              && parentShootRoomAfter().participantUids.hasAny([request.auth.uid]))
+          );
         allow delete: if false;
       }
 
