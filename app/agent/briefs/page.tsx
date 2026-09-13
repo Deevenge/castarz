@@ -9,7 +9,7 @@ import { AgentApplicationsWorkspace } from "@/components/AgentApplicationsWorksp
 import { PhotoLightbox } from "@/components/ProfileChrome";
 import { useAuth } from "@/context/AuthContext";
 import { briefCallTimeLabel, briefDateLabel, briefFromDocument, callTimeFromDateTime, type AgentBrief, type BriefStatus, type BriefVisibility } from "@/lib/agent-data";
-import { compressImageToDataUrl, normalizeActorProfile } from "@/lib/actor-profile";
+import { compressImageToDataUrl, normalizeActorProfile, type ActorCredit, type ActorProfile } from "@/lib/actor-profile";
 import { db } from "@/lib/firebase";
 import { notifyQuietly } from "@/lib/notify";
 
@@ -412,7 +412,7 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
   const shortlist = useMemo(() => applications.filter((application) => application.status === "standby" || application.status === "selected" || application.status === "booked"), [applications]);
   const shortlistKey = shortlist.map((application) => application.id).join("|");
   const [selectedBookingIds, setSelectedBookingIds] = useState<string[]>(shortlist.filter((application) => application.status === "selected" || application.status === "booked").map((application) => application.id));
-  const [actorDetails, setActorDetails] = useState<Record<string, { name: string; photo: string; bio: string; ageRange: string; heightCm: string; hairColor: string; eyeColor: string; credits: Array<{ production: string; year: string; role: string }> }>>({});
+  const [actorDetails, setActorDetails] = useState<Record<string, { name: string; photo: string; bio: string; ageRange: string; heightCm: string; hairColor: string; eyeColor: string; credits: ActorCredit[]; albums: ActorProfile["albums"] }>>({});
   const [previewPhoto, setPreviewPhoto] = useState<{ photo: string; label: string } | null>(null);
   const [commsMode, setCommsMode] = useState<FinalCommsMode>("whatsapp");
   const [message, setMessage] = useState(finalMessageFor("whatsapp", brief.title));
@@ -435,7 +435,8 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
         heightCm: actor.heightCm,
         hairColor: actor.hairColor,
         eyeColor: actor.eyeColor,
-        credits: actor.credits.map((credit) => ({ production: credit.production, year: credit.year, role: credit.role })).slice(0, 6),
+        credits: actor.credits.slice(0, 8),
+        albums: actor.albums,
       }] as const;
     })).then((entries) => {
       if (active) setActorDetails(Object.fromEntries(entries));
@@ -500,6 +501,7 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
           hairColor: actorDetails[application.actorUid]?.hairColor || "",
           eyeColor: actorDetails[application.actorUid]?.eyeColor || "",
           credits: actorDetails[application.actorUid]?.credits || [],
+          albums: actorDetails[application.actorUid]?.albums || {},
         }));
         batch.set(doc(db, "shootRooms", shootRoomId), {
           agencyId: senderUid,

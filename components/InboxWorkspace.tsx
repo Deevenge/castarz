@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowUpRight, Bell, CheckCheck, CheckCircle2, Handshake, LoaderCircle, MessageCircle, Search, Send, Sparkles, Trash2, UserPlus, UsersRound, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Bell, CheckCheck, CheckCircle2, Handshake, LoaderCircle, MessageCircle, MoreVertical, PlaySquare, Search, Send, Sparkles, Trash2, UserPlus, UsersRound, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -87,6 +87,7 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
   const { user } = useAuth();
   const requestedShoot = searchParams.get("shoot") ?? "";
   const [tab, setTab] = useState<"chats" | "shoots" | "notifications">(requestedShoot ? "shoots" : "chats");
+  const [menuOpen, setMenuOpen] = useState(false);
   const [selectedChatId, setSelectedChatId] = useState("");
   const [selectedShootId, setSelectedShootId] = useState("");
   const [selectedShootActor, setSelectedShootActor] = useState<ShootRoomActor | null>(null);
@@ -114,6 +115,7 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
   const selectedNotification = selectedNotificationId ? items.find((item) => item.id === selectedNotificationId) ?? null : null;
   const activeConversationId = selectedChat?.id ?? "";
   const activeShootRoomId = selectedShoot?.id ?? "";
+  const activeLabel = tab === "chats" ? "Chats" : tab === "shoots" ? "Shoot Rooms" : "Notifications";
 
   const filteredConversations = useMemo(() => {
     if (!user) return [];
@@ -244,31 +246,28 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
 
   return (
     <div className="mx-auto max-w-6xl">
-      <header className="mb-7 flex flex-wrap items-end justify-between gap-4">
+      <header className="mb-4 flex items-center justify-between gap-4">
         <div>
           <p className="text-sm font-bold tracking-[0.18em] text-brand-blue">{eyebrow}</p>
           <h1 className="mt-1 text-3xl font-bold tracking-tight">{title}</h1>
-          <p className="mt-2 max-w-2xl text-slate-600">Private casting conversations, smart follow-ups, and every important update in one polished workspace.</p>
+          <p className="mt-1 text-sm font-bold text-slate-500">{activeLabel}</p>
         </div>
-        <div className="rounded-2xl bg-brand-navy px-4 py-3 text-sm font-bold text-white shadow-lg shadow-brand-navy/15">
-          {unreadChatCount + unreadShootCount + unreadCount} unread
+        <div className="relative flex items-center gap-2">
+          <div className="rounded-2xl bg-brand-navy px-4 py-3 text-sm font-bold text-white shadow-lg shadow-brand-navy/15">
+            {unreadChatCount + unreadShootCount + unreadCount} unread
+          </div>
+          <button type="button" onClick={() => setMenuOpen((current) => !current)} className="flex size-12 items-center justify-center rounded-2xl bg-white text-brand-navy shadow-sm ring-1 ring-brand-silver/70 hover:bg-brand-ice" aria-label="Inbox menu">
+            <MoreVertical className="size-5" />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-14 z-20 w-64 overflow-hidden rounded-2xl bg-white p-2 shadow-2xl shadow-brand-navy/15 ring-1 ring-brand-silver/70">
+              <ModeMenuItem icon={MessageCircle} label="Chats" count={unreadChatCount} active={tab === "chats"} choose={() => { setTab("chats"); setMenuOpen(false); }} />
+              <ModeMenuItem icon={UsersRound} label="Shoot Rooms" count={unreadShootCount} active={tab === "shoots"} choose={() => { setTab("shoots"); setMenuOpen(false); }} />
+              <ModeMenuItem icon={Bell} label="Notifications" count={unreadCount} active={tab === "notifications"} choose={() => { setTab("notifications"); setMenuOpen(false); }} />
+            </div>
+          )}
         </div>
       </header>
-
-      <div className="mb-5 grid grid-cols-3 rounded-2xl bg-white p-1.5 shadow-sm ring-1 ring-brand-silver/70">
-        <button type="button" onClick={() => setTab("chats")} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${tab === "chats" ? "bg-brand-navy text-white shadow-sm" : "text-slate-500 hover:bg-brand-ice"}`}>
-          <MessageCircle className="size-4" />Chats
-          {unreadChatCount > 0 && <span className="rounded-full bg-brand-cyan px-1.5 text-[10px] leading-4 text-brand-navy">{unreadChatCount > 9 ? "9+" : unreadChatCount}</span>}
-        </button>
-        <button type="button" onClick={() => setTab("shoots")} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${tab === "shoots" ? "bg-brand-navy text-white shadow-sm" : "text-slate-500 hover:bg-brand-ice"}`}>
-          <UsersRound className="size-4" />Shoot Rooms
-          {unreadShootCount > 0 && <span className="rounded-full bg-brand-cyan px-1.5 text-[10px] leading-4 text-brand-navy">{unreadShootCount > 9 ? "9+" : unreadShootCount}</span>}
-        </button>
-        <button type="button" onClick={() => setTab("notifications")} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${tab === "notifications" ? "bg-brand-navy text-white shadow-sm" : "text-slate-500 hover:bg-brand-ice"}`}>
-          <Bell className="size-4" />Notifications
-          {unreadCount > 0 && <span className="rounded-full bg-brand-cyan px-1.5 text-[10px] leading-4 text-brand-navy">{unreadCount > 9 ? "9+" : unreadCount}</span>}
-        </button>
-      </div>
 
       {tab === "chats" ? (
         chatsError ? (
@@ -276,7 +275,7 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
         ) : !conversations.length ? (
           <EmptyChatPanel />
         ) : (
-          <div className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-brand-silver/70 lg:grid lg:min-h-[640px] lg:grid-cols-[360px_minmax(0,1fr)]">
+          <div className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-brand-silver/70 lg:grid lg:min-h-[calc(100dvh-155px)] lg:grid-cols-[360px_minmax(0,1fr)]">
             <aside className={`border-b border-brand-silver/70 bg-white lg:block lg:border-b-0 lg:border-r ${selectedChat ? "hidden" : "block"}`}>
               <div className="border-b border-brand-silver/70 p-4">
                 <label className="relative block">
@@ -284,7 +283,7 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
                   <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search conversations" className="min-h-11 w-full rounded-2xl border border-slate-200 bg-brand-ice/60 pl-10 pr-4 text-sm outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
                 </label>
               </div>
-              <div className="max-h-[420px] overflow-y-auto lg:max-h-[580px]">
+              <div className="max-h-[62dvh] overflow-y-auto lg:max-h-[calc(100dvh-255px)]">
                 {filteredConversations.map((conversation) => {
                   if (!user) return null;
                   const party = otherParty(conversation, user.uid);
@@ -319,7 +318,7 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
             </aside>
 
             {selectedChat && user ? (
-              <section className="flex min-h-[620px] flex-col bg-[#fbfcff]">
+              <section className="flex min-h-[72dvh] flex-col bg-[#fbfcff] lg:min-h-[calc(100dvh-155px)]">
                 <ChatHeader conversation={selectedChat} uid={user.uid} onBack={() => { setIgnoredRequestedChat(requestedChat); setSelectedChatId(""); }} />
                 <div className="flex-1 space-y-4 overflow-y-auto px-4 py-5 sm:px-6">
                   {messagesLoading ? (
@@ -367,7 +366,7 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
                 </div>
               </section>
             ) : (
-              <section className="hidden min-h-[620px] flex-col items-center justify-center bg-[#fbfcff] px-8 text-center lg:flex">
+              <section className="hidden min-h-[calc(100dvh-155px)] flex-col items-center justify-center bg-[#fbfcff] px-8 text-center lg:flex">
                 <div className="flex size-16 items-center justify-center rounded-3xl bg-brand-navy text-brand-cyan shadow-lg shadow-brand-navy/15"><MessageCircle className="size-7" /></div>
                 <h2 className="mt-5 text-2xl font-bold text-brand-navy">Select a conversation</h2>
                 <p className="mt-2 max-w-sm text-slate-600">Open a person from the chat list to view messages, reply, and mark the conversation as opened.</p>
@@ -381,7 +380,7 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
         ) : !rooms.length ? (
           <EmptyShootPanel />
         ) : (
-          <div className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-brand-silver/70 lg:grid lg:min-h-[640px] lg:grid-cols-[360px_minmax(0,1fr)]">
+          <div className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-brand-silver/70 lg:grid lg:min-h-[calc(100dvh-155px)] lg:grid-cols-[360px_minmax(0,1fr)]">
             <aside className={`border-b border-brand-silver/70 bg-white lg:block lg:border-b-0 lg:border-r ${selectedShoot ? "hidden" : "block"}`}>
               <div className="border-b border-brand-silver/70 p-4">
                 <label className="relative block">
@@ -389,7 +388,7 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
                   <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search shoot rooms" className="min-h-11 w-full rounded-2xl border border-slate-200 bg-brand-ice/60 pl-10 pr-4 text-sm outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
                 </label>
               </div>
-              <div className="max-h-[420px] overflow-y-auto lg:max-h-[580px]">
+              <div className="max-h-[62dvh] overflow-y-auto lg:max-h-[calc(100dvh-255px)]">
                 {filteredShootRooms.map((room) => {
                   if (!user) return null;
                   const unread = Boolean(room.lastSenderUid && room.lastSenderUid !== user.uid && !room.readBy.includes(user.uid));
@@ -426,7 +425,7 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
             </aside>
 
             {selectedShoot && user ? (
-              <section className="flex min-h-[620px] flex-col bg-[#fbfcff]">
+              <section className="flex min-h-[72dvh] flex-col bg-[#fbfcff] lg:min-h-[calc(100dvh-155px)]">
                 <ShootRoomHeader room={selectedShoot} uid={user.uid} onBack={() => setSelectedShootId("")} openActor={setSelectedShootActor} />
                 <div className="flex-1 space-y-4 overflow-y-auto px-4 py-5 sm:px-6">
                   {shootMessagesLoading ? (
@@ -440,7 +439,7 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
                       const sender = shootSender(selectedShoot, message.senderUid);
                       return (
                         <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                          <div className={`flex max-w-[88%] items-end gap-2 sm:max-w-[72%] ${mine ? "flex-row-reverse" : ""}`}>
+                          <div className={`flex max-w-[86%] items-end gap-2 sm:max-w-[68%] ${mine ? "flex-row-reverse" : ""}`}>
                             {!mine && (
                               <button type="button" disabled={!sender.actor} onClick={() => sender.actor && setSelectedShootActor(sender.actor)} className="relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-navy text-[10px] font-black text-brand-cyan disabled:cursor-default" aria-label={`Open ${sender.name} z-card`}>
                                 {sender.photo ? <Image src={sender.photo} alt="" fill unoptimized className="object-cover" /> : initials(sender.name)}
@@ -480,7 +479,7 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
                 </div>
               </section>
             ) : (
-              <section className="hidden min-h-[620px] flex-col items-center justify-center bg-[#fbfcff] px-8 text-center lg:flex">
+              <section className="hidden min-h-[calc(100dvh-155px)] flex-col items-center justify-center bg-[#fbfcff] px-8 text-center lg:flex">
                 <div className="flex size-16 items-center justify-center rounded-3xl bg-brand-navy text-brand-cyan shadow-lg shadow-brand-navy/15"><UsersRound className="size-7" /></div>
                 <h2 className="mt-5 text-2xl font-bold text-brand-navy">Select a shoot room</h2>
                 <p className="mt-2 max-w-sm text-slate-600">Open a production room to manage booked-cast updates without leaving CASTARZ.</p>
@@ -542,6 +541,18 @@ function Avatar({ name, photo }: { name: string; photo: string }) {
     <div className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-brand-navy text-sm font-extrabold text-brand-cyan">
       {photo ? <Image src={photo} alt="" fill unoptimized className="object-cover" /> : initials(name)}
     </div>
+  );
+}
+
+function ModeMenuItem({ icon: Icon, label, count, active, choose }: { icon: typeof Bell; label: string; count: number; active: boolean; choose: () => void }) {
+  return (
+    <button type="button" onClick={choose} className={`flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-bold transition ${active ? "bg-brand-navy text-white" : "text-brand-navy hover:bg-brand-ice"}`}>
+      <span className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${active ? "bg-white/15 text-brand-cyan" : "bg-brand-ice text-brand-blue"}`}>
+        <Icon className="size-4" />
+      </span>
+      <span className="min-w-0 flex-1">{label}</span>
+      {count > 0 && <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${active ? "bg-brand-cyan text-brand-navy" : "bg-brand-blue text-white"}`}>{count > 9 ? "9+" : count}</span>}
+    </button>
   );
 }
 
@@ -624,48 +635,91 @@ function ShootRoomHeader({ room, uid, onBack, openActor }: { room: ShootRoom; ui
 
 function ShootActorCard({ actor, close }: { actor: ShootRoomActor; close: () => void }) {
   const specs = [actor.ageRange, actor.heightCm && `${actor.heightCm} cm`, actor.hairColor, actor.eyeColor].filter(Boolean);
+  const albumPhotos = Object.entries(actor.albums ?? {}).flatMap(([category, photos]) => photos.map((photo) => ({ category, photo }))).slice(0, 8);
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center bg-brand-navy/55 p-0 backdrop-blur-sm sm:items-center sm:p-6">
-      <article className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl sm:p-8">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-4">
-            <div className="relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-navy text-sm font-black text-brand-cyan">
-              {actor.photo ? <Image src={actor.photo} alt="" fill unoptimized className="object-cover" /> : initials(actor.name)}
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-brand-blue">Shoot room z-card</p>
-              <h2 className="mt-1 truncate text-2xl font-bold text-brand-navy">{actor.name}</h2>
-              <p className="mt-1 text-sm text-slate-500">Visible only inside this booked production room.</p>
-            </div>
-          </div>
-          <button type="button" onClick={close} className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-ice text-brand-navy hover:bg-slate-100" aria-label="Close z-card">
+      <article className="max-h-[94dvh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+        <div className="relative min-h-56 overflow-hidden bg-brand-navy">
+          {albumPhotos[0]?.photo ? <Image src={albumPhotos[0].photo} alt="" fill unoptimized className="object-cover opacity-35" /> : null}
+          <div className="absolute inset-0 bg-brand-navy/55" />
+          <button type="button" onClick={close} className="absolute right-4 top-4 z-10 flex size-10 shrink-0 items-center justify-center rounded-full bg-white/90 text-brand-navy hover:bg-white" aria-label="Close z-card">
             <X className="size-5" />
           </button>
-        </div>
-        {!!specs.length && (
-          <div className="mt-6 flex flex-wrap gap-2">
-            {specs.map((spec) => <span key={spec} className="rounded-full bg-brand-ice px-3 py-1.5 text-xs font-bold text-brand-navy">{spec}</span>)}
-          </div>
-        )}
-        {actor.bio && <p className="mt-5 rounded-2xl bg-brand-ice/60 p-4 text-sm leading-6 text-slate-700">{actor.bio}</p>}
-        <section className="mt-6">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="font-bold text-brand-navy">Credits</h3>
-            <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-brand-blue ring-1 ring-brand-silver/70">{actor.credits.length}</span>
-          </div>
-          {actor.credits.length ? (
-            <div className="mt-3 overflow-hidden rounded-2xl border border-brand-silver/70">
-              {actor.credits.map((credit, index) => (
-                <div key={`${credit.production}-${credit.year}-${credit.role}-${index}`} className="border-b border-slate-100 p-3 last:border-b-0">
-                  <p className="font-bold text-brand-navy">{credit.production || "Production"}</p>
-                  <p className="mt-1 text-sm text-slate-600">{[credit.role, credit.year].filter(Boolean).join(" · ") || "Credit details pending"}</p>
-                </div>
-              ))}
+          <div className="relative z-10 flex min-h-56 items-end gap-4 p-6 text-white sm:p-8">
+            <div className="relative flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-3xl bg-white text-lg font-black text-brand-navy ring-4 ring-white/25">
+              {actor.photo ? <Image src={actor.photo} alt="" fill unoptimized className="object-cover" /> : initials(actor.name)}
             </div>
-          ) : (
-            <p className="mt-3 rounded-2xl border border-dashed border-brand-silver bg-brand-ice/40 p-4 text-sm font-semibold text-slate-500">No credits shared for this room.</p>
+            <div className="min-w-0 pb-1">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-cyan">Actor z-card</p>
+              <h2 className="mt-1 truncate text-3xl font-bold tracking-tight">{actor.name}</h2>
+              <p className="mt-2 max-w-xl text-sm font-semibold text-white/75">Production-safe profile view for the booked shoot room.</p>
+            </div>
+          </div>
+        </div>
+        <div className="p-6 sm:p-8">
+          {!!specs.length && (
+            <div className="flex flex-wrap gap-2">
+              {specs.map((spec, index) => <span key={`${spec}-${index}`} className="rounded-full bg-brand-ice px-3 py-1.5 text-xs font-bold text-brand-navy">{spec}</span>)}
+            </div>
           )}
-        </section>
+          <section className="mt-6">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-blue">About</p>
+            <p className="mt-3 rounded-2xl bg-brand-ice/60 p-4 text-sm leading-6 text-slate-700">{actor.bio || "This actor has not added a bio yet."}</p>
+          </section>
+          <section className="mt-7 border-t border-brand-silver/70 pt-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-brand-navy">Screen and stage credits</h3>
+                <p className="mt-1 text-sm text-slate-500">Shows, commercials, theatre, film, and featured work.</p>
+              </div>
+              <span className="rounded-full bg-brand-navy px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-brand-cyan">{actor.credits.length} credits</span>
+            </div>
+            {actor.credits.length ? (
+              <div className="mt-4 overflow-hidden rounded-2xl border border-brand-silver/70">
+                {actor.credits.map((credit, index) => (
+                  <div key={`${credit.production}-${credit.year}-${credit.role}-${index}`} className="grid gap-4 border-b border-slate-100 bg-white p-4 last:border-b-0 sm:grid-cols-[120px_1fr]">
+                    <div className="relative aspect-video overflow-hidden rounded-2xl bg-brand-ice">
+                      {credit.mediaType === "image" && credit.mediaUrl ? (
+                        <Image src={credit.mediaUrl} alt={`${credit.production || "Credit"} media`} fill unoptimized className="object-cover" />
+                      ) : credit.mediaType === "video" && credit.mediaUrl ? (
+                        <video src={credit.mediaUrl} controls playsInline className="size-full object-cover" />
+                      ) : (
+                        <div className="flex size-full items-center justify-center text-brand-blue"><PlaySquare className="size-6" /></div>
+                      )}
+                    </div>
+                    <div className="min-w-0 self-center">
+                      <p className="truncate font-bold text-brand-navy">{credit.production || "Untitled production"}</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-600">{[credit.role, credit.year].filter(Boolean).join(" · ") || "Credit details pending"}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-4 rounded-2xl border border-dashed border-brand-silver bg-brand-ice/40 p-5 text-sm font-semibold text-slate-500">No credits listed yet.</p>
+            )}
+          </section>
+          <section className="mt-7 border-t border-brand-silver/70 pt-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-brand-navy">Profile photos</h3>
+                <p className="mt-1 text-sm text-slate-500">A quick view of the actor&apos;s z-card gallery.</p>
+              </div>
+              <span className="rounded-full bg-brand-ice px-3 py-1 text-xs font-black text-brand-navy">{albumPhotos.length}</span>
+            </div>
+            {albumPhotos.length ? (
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {albumPhotos.map((item, index) => (
+                  <div key={`${item.category}-${index}`} className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-brand-ice">
+                    <Image src={item.photo} alt={`${item.category} profile photo`} fill unoptimized className="object-cover" />
+                    <span className="absolute bottom-2 left-2 rounded-full bg-white/90 px-2 py-1 text-[10px] font-black text-brand-navy">{item.category}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-4 rounded-2xl border border-dashed border-brand-silver bg-brand-ice/40 p-5 text-sm font-semibold text-slate-500">No gallery photos shared for this room.</p>
+            )}
+          </section>
+        </div>
       </article>
     </div>
   );

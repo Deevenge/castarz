@@ -14,7 +14,8 @@ export interface ShootRoomActor {
   heightCm: string;
   hairColor: string;
   eyeColor: string;
-  credits: Array<{ production: string; year: string; role: string }>;
+  credits: Array<{ production: string; year: string; role: string; mediaUrl: string; mediaType: "none" | "image" | "video" }>;
+  albums: Record<string, string[]>;
 }
 
 export interface ShootRoom {
@@ -50,6 +51,11 @@ function actorSummaryFromData(value: unknown): ShootRoomActor | null {
   const data = value as Record<string, unknown>;
   const uid = typeof data.uid === "string" ? data.uid : "";
   if (!uid) return null;
+  const rawAlbums = data.albums && typeof data.albums === "object" ? data.albums as Record<string, unknown> : {};
+  const albums = Object.fromEntries(Object.entries(rawAlbums).map(([category, photos]) => [
+    category,
+    Array.isArray(photos) ? photos.filter((photo): photo is string => typeof photo === "string").slice(0, 3) : [],
+  ]));
   return {
     uid,
     name: typeof data.name === "string" && data.name.trim() ? data.name : "Booked actor",
@@ -61,12 +67,16 @@ function actorSummaryFromData(value: unknown): ShootRoomActor | null {
     eyeColor: typeof data.eyeColor === "string" ? data.eyeColor : "",
     credits: Array.isArray(data.credits) ? data.credits.map((credit) => {
       const item = credit as Record<string, unknown>;
+      const mediaType: ShootRoomActor["credits"][number]["mediaType"] = item.mediaType === "image" || item.mediaType === "video" ? item.mediaType : "none";
       return {
         production: typeof item.production === "string" ? item.production : "",
         year: typeof item.year === "string" ? item.year : "",
         role: typeof item.role === "string" ? item.role : "",
+        mediaUrl: typeof item.mediaUrl === "string" ? item.mediaUrl : "",
+        mediaType,
       };
-    }).filter((credit) => credit.production || credit.year || credit.role).slice(0, 6) : [],
+    }).filter((credit) => credit.production || credit.year || credit.role).slice(0, 8) : [],
+    albums,
   };
 }
 
