@@ -29,11 +29,22 @@ service cloud.firestore {
     function briefData() {
       return get(/databases/$(database)/documents/briefs/$(request.resource.data.briefId)).data;
     }
+    function briefAfterData() {
+      return getAfter(/databases/$(database)/documents/briefs/$(request.resource.data.briefId)).data;
+    }
     function briefHasSpace() {
-      return !(briefData().talentNeeded is number)
-        || briefData().talentNeeded <= 0
-        || !(briefData().applicationCount is number)
-        || briefData().applicationCount < briefData().talentNeeded;
+      return briefData().applicationCount is number
+        && (
+          !(briefData().talentNeeded is number)
+          || briefData().talentNeeded <= 0
+          || briefData().applicationCount < briefData().talentNeeded
+        );
+    }
+    function briefCountIncrementedWithApplication() {
+      return existsAfter(/databases/$(database)/documents/briefs/$(request.resource.data.briefId))
+        && briefData().applicationCount is number
+        && briefAfterData().applicationCount is number
+        && briefAfterData().applicationCount == briefData().applicationCount + 1;
     }
     function unchanged(field) {
       return request.resource.data[field] == resource.data[field];
@@ -83,17 +94,9 @@ service cloud.firestore {
           && !exists(/databases/$(database)/documents/applications/$(briefId + '_' + request.auth.uid))
           && existsAfter(/databases/$(database)/documents/applications/$(briefId + '_' + request.auth.uid))
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['applicationCount', 'updatedAt'])
+          && resource.data.applicationCount is number
           && request.resource.data.applicationCount is number
-          && (
-            (
-              resource.data.applicationCount is number
-              && request.resource.data.applicationCount == resource.data.applicationCount + 1
-            )
-            || (
-              !(resource.data.applicationCount is number)
-              && request.resource.data.applicationCount == 1
-            )
-          )
+          && request.resource.data.applicationCount == resource.data.applicationCount + 1
           && (
             !(resource.data.talentNeeded is number)
             || resource.data.talentNeeded <= 0
@@ -117,14 +120,17 @@ service cloud.firestore {
 
     match /applications/{applicationId} {
       allow create: if isActor()
-        && request.resource.data.actorUid == request.auth.uid
-        && request.resource.data.status == 'pending'
+        && request.resource.data.keys().hasOnly(['briefId', 'actorUid', 'agencyId', 'status', 'createdAt'])
         && request.resource.data.briefId is string
         && request.resource.data.agencyId is string
+        && applicationId == request.resource.data.briefId + '_' + request.auth.uid
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.status == 'pending'
         && exists(/databases/$(database)/documents/briefs/$(request.resource.data.briefId))
         && request.resource.data.agencyId == briefData().agencyId
         && briefData().status == 'published'
         && briefHasSpace()
+        && briefCountIncrementedWithApplication()
         && (
           briefData().visibility == 'public'
           || (briefData().visibility == 'network'

@@ -110,6 +110,7 @@ export default function BriefsPage() {
     try {
       const agency = await getDoc(doc(db, "agencies", user.uid));
       const agencyName = typeof agency.data()?.name === "string" && agency.data()?.name.trim() ? agency.data()?.name : profile.email;
+      const agencyPhoto = typeof agency.data()?.photo === "string" ? agency.data()?.photo : "";
       const talentNeeded = Math.max(0, Number.parseInt(form.talentNeeded, 10) || 0);
       const applicationCount = editingBrief ? Math.max(editingBrief.applicationCount, applicationsByBrief[editingBrief.id]?.length ?? 0) : 0;
       const payload = {
@@ -118,6 +119,7 @@ export default function BriefsPage() {
         applicationCount,
         agencyId: user.uid,
         agencyName,
+        agencyPhoto,
         shootDateTime: form.shootDate,
         callTime: callTimeFromDateTime(form.shootDate),
         ageRange: form.ageRange.trim(),

@@ -1,11 +1,11 @@
 "use client";
 
-import { collection, doc, onSnapshot, query, serverTimestamp, setDoc, where } from "firebase/firestore";
-import { Check, CheckCircle2, Clock3, LoaderCircle, MapPin, Send, UserMinus, WalletCards } from "lucide-react";
+import { collection, doc, onSnapshot, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
+import { Check, CheckCircle2, Clock3, LoaderCircle, MapPin, Maximize2, Send, UserMinus, UsersRound, WalletCards } from "lucide-react";
 import Image from "next/image";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { AgencyHeroCard, LoadingScreen, ProfileTabs } from "@/components/ProfileChrome";
+import { AgencyHeroCard, LoadingScreen, PhotoLightbox, ProfileTabs } from "@/components/ProfileChrome";
 import { StartChatButton } from "@/components/StartChatButton";
 import { useAuth } from "@/context/AuthContext";
 import { briefCallTimeLabel, briefDateLabel, briefFromDocument, type AgentBrief } from "@/lib/agent-data";
@@ -105,8 +105,31 @@ export default function AgencyPublicPage() {
   async function apply(brief: AgentBrief) {
     if (!user || appliedIds.includes(brief.id)) return;
     setApplyingId(brief.id);
+    setNotice("");
     try {
-      await setDoc(doc(db, "applications", `${brief.id}_${user.uid}`), { briefId: brief.id, actorUid: user.uid, agencyId: brief.agencyId, status: "pending", createdAt: serverTimestamp() });
+      const applicationRef = doc(db, "applications", `${brief.id}_${user.uid}`);
+      let createdApplication = false;
+      await runTransaction(db, async (transaction) => {
+        const briefRef = doc(db, "briefs", brief.id);
+        const [freshBrief, existingApplication] = await Promise.all([
+          transaction.get(briefRef),
+          transaction.get(applicationRef),
+        ]);
+        if (!freshBrief.exists()) throw new Error("missing-brief");
+        if (existingApplication.exists()) return;
+        const data = freshBrief.data();
+        const talentNeeded = typeof data.talentNeeded === "number" ? data.talentNeeded : 0;
+        if (typeof data.applicationCount !== "number") throw new Error("brief-count-missing");
+        const applicationCount = data.applicationCount;
+        if (talentNeeded > 0 && applicationCount >= talentNeeded) throw new Error("brief-full");
+        transaction.set(applicationRef, { briefId: brief.id, actorUid: user.uid, agencyId: brief.agencyId, status: "pending", createdAt: serverTimestamp() });
+        transaction.update(briefRef, { applicationCount: applicationCount + 1, updatedAt: serverTimestamp() });
+        createdApplication = true;
+      });
+      if (!createdApplication) {
+        setNotice("You have already applied for this brief.");
+        return;
+      }
       await notifyQuietly({
         recipientUid: brief.agencyId,
         senderUid: user.uid,
@@ -115,6 +138,13 @@ export default function AgencyPublicPage() {
         body: `An actor applied for ${brief.title}. Open the dossier to review and book.`,
         href: "/agent/applications",
       });
+      setNotice("Application sent. Your agent will review your profile and availability.");
+    } catch (error) {
+      setNotice(error instanceof Error && error.message === "brief-full"
+        ? "This brief is full. The agency may close it soon."
+        : error instanceof Error && error.message === "brief-count-missing"
+          ? "This brief is syncing its availability. Please try again shortly."
+          : "We could not send your application. Please try again.");
     } finally {
       setApplyingId("");
     }
@@ -210,38 +240,80 @@ export default function AgencyPublicPage() {
           {visibleBriefs.map((brief) => {
             const applied = appliedIds.includes(brief.id);
             const loading = applyingId === brief.id;
+            const remaining = brief.talentNeeded ? Math.max(brief.talentNeeded - brief.applicationCount, 0) : 0;
+            const full = Boolean(brief.talentNeeded && remaining === 0);
             return (
-              <article key={brief.id} className="rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-brand-silver/70">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-lg font-bold text-brand-navy">{brief.title}</h3>
-                  {brief.visibility === "network" && <span className="rounded-full bg-brand-navy px-2 py-0.5 text-[11px] font-bold text-brand-cyan">Network</span>}
-                </div>
-                {brief.description && <p className="mt-2 text-sm leading-6 text-slate-600">{brief.description}</p>}
-                <div className="mt-4 flex flex-wrap gap-4 text-sm font-semibold text-slate-600">
-                  <span className="flex items-center gap-1"><MapPin className="size-4 text-brand-blue" />{brief.location || "Location pending"}</span>
-                  <span className="flex items-center gap-1"><WalletCards className="size-4 text-brand-blue" />{brief.rate || "Rate pending"}</span>
-                  <span className="flex items-center gap-1"><Clock3 className="size-4 text-brand-blue" />{briefDateLabel(brief)} · {briefCallTimeLabel(brief)}</span>
-                </div>
-                {(brief.ageRange || brief.wardrobe || brief.wardrobeImage) && (
-                  <div className="mt-4 grid gap-3 rounded-2xl bg-brand-ice/60 p-4 md:grid-cols-[1fr_150px]">
-                    <div className="space-y-3">
-                      {brief.ageRange && <InfoTile label="Age range" value={brief.ageRange} />}
-                      {brief.wardrobe && <InfoTile label="Wardrobe" value={brief.wardrobe} />}
-                    </div>
-                    {brief.wardrobeImage && <div className="relative aspect-video overflow-hidden rounded-2xl bg-white"><Image src={brief.wardrobeImage} alt="Wardrobe reference" fill unoptimized className="object-cover" /></div>}
-                  </div>
-                )}
-                <button type="button" disabled={applied || loading} onClick={() => void apply(brief)} className={`mt-4 flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold ${applied ? "bg-emerald-50 text-emerald-700" : "bg-brand-blue text-white"}`}>
-                  {loading ? <LoaderCircle className="size-4 animate-spin" /> : applied ? <CheckCircle2 className="size-4" /> : <Send className="size-4" />}
-                  {applied ? "Applied" : loading ? "Applying…" : "Apply now"}
-                </button>
-              </article>
+              <AgencyBriefCard
+                key={brief.id}
+                brief={brief}
+                agency={agency}
+                applied={applied}
+                loading={loading}
+                full={full}
+                remaining={remaining}
+                onApply={() => void apply(brief)}
+              />
             );
           })}
           {!visibleBriefs.length && <p className="rounded-[28px] border-2 border-dashed border-brand-silver bg-white p-8 text-center text-sm text-slate-600">No live briefs from this agency yet.</p>}
         </div>
       )}
     </div>
+  );
+}
+
+function AgencyBriefCard({ brief, agency, applied, loading, full, remaining, onApply }: { brief: AgentBrief; agency: DirectoryAgency; applied: boolean; loading: boolean; full: boolean; remaining: number; onApply: () => void }) {
+  const [wardrobeOpen, setWardrobeOpen] = useState(false);
+
+  return (
+    <article className="rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-brand-silver/70">
+      <div className="flex gap-3">
+        <div className="relative flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-brand-navy text-sm font-extrabold text-brand-cyan">
+          {agency.photo ? <Image src={agency.photo} alt={`${agency.name} profile photo`} fill unoptimized className="object-cover" /> : agency.name.slice(0, 2).toUpperCase()}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-lg font-bold text-brand-navy">{brief.title}</h3>
+            {brief.visibility === "network" && <span className="rounded-full bg-brand-navy px-2 py-0.5 text-[11px] font-bold text-brand-cyan">Network</span>}
+          </div>
+          <p className="mt-1 text-sm font-semibold text-slate-500">{agency.name}</p>
+        </div>
+      </div>
+      {brief.description && <p className="mt-4 text-sm leading-6 text-slate-600">{brief.description}</p>}
+      {brief.talentNeeded > 0 && (
+        <div className={`mt-4 flex flex-wrap items-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold ${full ? "bg-slate-100 text-slate-600" : "bg-brand-ice text-brand-navy"}`}>
+          <UsersRound className="size-4 text-brand-blue" />
+          <span>{full ? "Full" : `${remaining} ${remaining === 1 ? "spot" : "spots"} remaining`}</span>
+          <span className="text-slate-500">of {brief.talentNeeded} actors needed</span>
+        </div>
+      )}
+      <div className="mt-4 flex flex-wrap gap-4 text-sm font-semibold text-slate-600">
+        <span className="flex items-center gap-1"><MapPin className="size-4 text-brand-blue" />{brief.location || "Location pending"}</span>
+        <span className="flex items-center gap-1"><WalletCards className="size-4 text-brand-blue" />{brief.rate || "Rate pending"}</span>
+        <span className="flex items-center gap-1"><Clock3 className="size-4 text-brand-blue" />{briefDateLabel(brief)} · {briefCallTimeLabel(brief)}</span>
+      </div>
+      {(brief.ageRange || brief.wardrobe || brief.wardrobeImage) && (
+        <div className="mt-4 grid gap-3 rounded-2xl bg-brand-ice/60 p-4 md:grid-cols-[1fr_150px]">
+          <div className="space-y-3">
+            {brief.ageRange && <InfoTile label="Age range" value={brief.ageRange} />}
+            {brief.wardrobe && <InfoTile label="Wardrobe" value={brief.wardrobe} />}
+          </div>
+          {brief.wardrobeImage && (
+            <button type="button" onClick={() => setWardrobeOpen(true)} className="group relative aspect-video overflow-hidden rounded-2xl bg-white text-left" aria-label="Open wardrobe reference">
+              <Image src={brief.wardrobeImage} alt="Wardrobe reference" fill unoptimized className="object-cover transition duration-300 group-hover:scale-105" />
+              <span className="absolute inset-0 flex items-center justify-center bg-brand-navy/0 text-white transition group-hover:bg-brand-navy/35">
+                <Maximize2 className="size-6 opacity-0 transition group-hover:opacity-100" />
+              </span>
+            </button>
+          )}
+        </div>
+      )}
+      <button type="button" disabled={applied || loading || full} onClick={onApply} className={`mt-4 flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold ${applied ? "bg-emerald-50 text-emerald-700" : full ? "bg-slate-100 text-slate-500" : "bg-brand-blue text-white"}`}>
+        {loading ? <LoaderCircle className="size-4 animate-spin" /> : applied ? <CheckCircle2 className="size-4" /> : <Send className="size-4" />}
+        {applied ? "Applied" : full ? "Full" : loading ? "Applying..." : "Apply now"}
+      </button>
+      {brief.wardrobeImage && wardrobeOpen && <PhotoLightbox photo={brief.wardrobeImage} label="Wardrobe reference" close={() => setWardrobeOpen(false)} />}
+    </article>
   );
 }
 

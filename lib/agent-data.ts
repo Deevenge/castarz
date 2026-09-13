@@ -7,6 +7,7 @@ export interface AgentBrief {
   id: string;
   agencyId: string;
   agencyName: string;
+  agencyPhoto: string;
   title: string;
   production: string;
   location: string;
@@ -33,6 +34,7 @@ export function briefFromDocument(id: string, data: DocumentData): AgentBrief {
     id,
     agencyId: typeof data.agencyId === "string" ? data.agencyId : "",
     agencyName: typeof data.agencyName === "string" ? data.agencyName : "Your agency",
+    agencyPhoto: typeof data.agencyPhoto === "string" ? data.agencyPhoto : "",
     title: typeof data.title === "string" ? data.title : "Untitled brief",
     production: typeof data.production === "string" ? data.production : "",
     location: typeof data.location === "string" ? data.location : "",

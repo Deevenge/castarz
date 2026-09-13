@@ -1,10 +1,11 @@
 "use client";
 
-import { collection, doc, onSnapshot, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
 import Image from "next/image";
 import Link from "next/link";
-import { Bell, BriefcaseBusiness, Building2, CheckCircle2, Clock3, Grid3X3, LoaderCircle, MapPin, Send, Sparkles, UsersRound, WalletCards } from "lucide-react";
+import { Bell, BriefcaseBusiness, Building2, CheckCircle2, Clock3, Grid3X3, LoaderCircle, MapPin, Maximize2, Send, Sparkles, UsersRound, WalletCards } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { PhotoLightbox } from "@/components/ProfileChrome";
 import { SocialPostComposer } from "@/components/SocialPostComposer";
 import { SocialPostGrid } from "@/components/SocialPostGrid";
 import { useAuth } from "@/context/AuthContext";
@@ -104,7 +105,8 @@ export default function ActorDashboardPage() {
         if (existingApplication.exists()) return;
         const data = freshBrief.data();
         const talentNeeded = typeof data.talentNeeded === "number" ? data.talentNeeded : 0;
-        const applicationCount = typeof data.applicationCount === "number" ? data.applicationCount : 0;
+        if (typeof data.applicationCount !== "number") throw new Error("brief-count-missing");
+        const applicationCount = data.applicationCount;
         if (talentNeeded > 0 && applicationCount >= talentNeeded) throw new Error("brief-full");
         transaction.set(applicationRef, { briefId: brief.id, actorUid: user.uid, agencyId: brief.agencyId, status: "pending", createdAt: serverTimestamp() });
         transaction.update(briefRef, { applicationCount: applicationCount + 1, updatedAt: serverTimestamp() });
@@ -124,7 +126,11 @@ export default function ActorDashboardPage() {
       });
       setNotice("Application sent. Your agent will review your profile and availability.");
     } catch (error) {
-      setNotice(error instanceof Error && error.message === "brief-full" ? "This brief is full. The agency may close it soon." : "We could not send your application. Please try again.");
+      setNotice(error instanceof Error && error.message === "brief-full"
+        ? "This brief is full. The agency may close it soon."
+        : error instanceof Error && error.message === "brief-count-missing"
+          ? "This brief is syncing its availability. Please try again shortly."
+          : "We could not send your application. Please try again.");
     } finally {
       setApplyingId("");
     }
@@ -205,13 +211,28 @@ function BriefCard({ brief, accent, applied, loading, onApply }: { brief: AgentB
   const ageTags = brief.ageRange ? [brief.ageRange] : brief.requirements;
   const remaining = brief.talentNeeded ? Math.max(brief.talentNeeded - brief.applicationCount, 0) : 0;
   const full = Boolean(brief.talentNeeded && remaining === 0);
+  const [fetchedAgencyPhoto, setFetchedAgencyPhoto] = useState("");
+  const [wardrobeOpen, setWardrobeOpen] = useState(false);
+  const agencyPhoto = brief.agencyPhoto || fetchedAgencyPhoto;
+
+  useEffect(() => {
+    if (brief.agencyPhoto || !brief.agencyId) return;
+    let active = true;
+    void getDoc(doc(db, "agencies", brief.agencyId)).then((snapshot) => {
+      const photo = snapshot.data()?.photo;
+      if (active && typeof photo === "string") setFetchedAgencyPhoto(photo);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [brief.agencyId, brief.agencyPhoto]);
 
   return (
     <article className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-brand-silver/70">
       <div className={`h-1.5 ${accent}`} />
       <div className="p-5 sm:p-6">
         <div className="flex gap-3">
-          <div className={`flex size-11 shrink-0 items-center justify-center rounded-2xl ${accent} text-sm font-extrabold text-white`}>{brief.agencyName.slice(0, 2).toUpperCase()}</div>
+          <Link href={`/actor/agencies/${brief.agencyId}`} className={`relative flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl ${accent} text-sm font-extrabold text-white`}>
+            {agencyPhoto ? <Image src={agencyPhoto} alt={`${brief.agencyName} profile photo`} fill unoptimized className="object-cover" /> : brief.agencyName.slice(0, 2).toUpperCase()}
+          </Link>
           <div>
             <Link href={`/actor/agencies/${brief.agencyId}`} className="font-bold text-brand-navy hover:text-brand-blue">{brief.agencyName}</Link>
             <p className="mt-1 flex items-center gap-1 text-sm text-slate-500"><MapPin className="size-3.5" />{brief.location || "Location pending"}</p>
@@ -239,7 +260,14 @@ function BriefCard({ brief, accent, applied, loading, onApply }: { brief: AgentB
                 <p className="mt-1 text-sm font-semibold leading-6 text-brand-navy">{brief.wardrobe}</p>
               </div>
             )}
-            {brief.wardrobeImage && <div className="relative aspect-video overflow-hidden rounded-xl bg-white"><Image src={brief.wardrobeImage} alt="Wardrobe reference" fill unoptimized className="object-cover" /></div>}
+            {brief.wardrobeImage && (
+              <button type="button" onClick={() => setWardrobeOpen(true)} className="group relative aspect-video overflow-hidden rounded-xl bg-white text-left" aria-label="Open wardrobe reference">
+                <Image src={brief.wardrobeImage} alt="Wardrobe reference" fill unoptimized className="object-cover transition duration-300 group-hover:scale-105" />
+                <span className="absolute inset-0 flex items-center justify-center bg-brand-navy/0 text-white transition group-hover:bg-brand-navy/35">
+                  <Maximize2 className="size-6 opacity-0 transition group-hover:opacity-100" />
+                </span>
+              </button>
+            )}
           </div>
         )}
         <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 pt-4">
@@ -253,6 +281,7 @@ function BriefCard({ brief, accent, applied, loading, onApply }: { brief: AgentB
           </button>
         </div>
       </div>
+      {brief.wardrobeImage && wardrobeOpen && <PhotoLightbox photo={brief.wardrobeImage} label="Wardrobe reference" close={() => setWardrobeOpen(false)} />}
     </article>
   );
 }
