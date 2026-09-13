@@ -2,6 +2,7 @@
 
 import { collection, doc, getDoc, onSnapshot, query, where } from "firebase/firestore";
 import { BriefcaseBusiness, CalendarDays, CheckCircle2, Clock3, MapPin, MessageCircle, WalletCards, XCircle } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { briefFromDocument, type AgentBrief } from "@/lib/agent-data";
@@ -73,7 +74,7 @@ export default function MyApplicationsPage() {
         {applications.map((application) => {
           const brief = briefs[application.briefId];
           const booking = bookings[application.id];
-          const showCastComms = application.status === "booked" && brief?.status === "closed" && (brief.closeMessage || brief.whatsappLink);
+          const showCastComms = application.status === "booked" && brief?.status === "closed" && (brief.closeMessage || brief.whatsappLink || brief.shootRoomId);
 
           return (
             <article key={application.id} className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-brand-silver/70">
@@ -105,6 +106,11 @@ export default function MyApplicationsPage() {
                               </a>
                               <p className="mt-2 break-all text-xs text-emerald-700">{brief.whatsappLink}</p>
                             </>
+                          )}
+                          {!brief.whatsappLink && brief.shootRoomId && (
+                            <Link href={`/actor/inbox?shoot=${brief.shootRoomId}`} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-navy px-4 text-sm font-bold text-white hover:bg-brand-blue">
+                              <MessageCircle className="size-4" />Open shoot room
+                            </Link>
                           )}
                         </div>
                       </div>

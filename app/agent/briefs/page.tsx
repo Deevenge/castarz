@@ -57,6 +57,8 @@ const deleteReasons = [
   "Brief posted by mistake",
 ];
 
+type FinalCommsMode = "whatsapp" | "shootRoom";
+
 export default function BriefsPage() {
   const { user, profile } = useAuth();
   const [briefs, setBriefs] = useState<AgentBrief[]>([]);
@@ -407,6 +409,7 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
   const [actorDetails, setActorDetails] = useState<Record<string, { name: string; photo: string }>>({});
   const [previewPhoto, setPreviewPhoto] = useState<{ photo: string; label: string } | null>(null);
   const [message, setMessage] = useState(`Congratulations, you are booked for ${brief.title}. Please join the WhatsApp group for final shoot communication.`);
+  const [commsMode, setCommsMode] = useState<FinalCommsMode>("whatsapp");
   const [whatsappLink, setWhatsappLink] = useState("");
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
@@ -435,11 +438,15 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
     setWorking(true);
     setError("");
     try {
+      const shootRoomId = `shoot_${brief.id}`;
+      const usingShootRoom = commsMode === "shootRoom";
       const batch = writeBatch(db);
       batch.update(doc(db, "briefs", brief.id), {
         status: "closed",
         closeMessage: message.trim(),
-        whatsappLink: whatsappLink.trim(),
+        whatsappLink: commsMode === "whatsapp" ? whatsappLink.trim() : "",
+        shootRoomId: usingShootRoom ? shootRoomId : "",
+        finalCommsMode: commsMode,
         closedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -467,6 +474,28 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
       notSelectedApplications.forEach((application) => {
         batch.update(doc(db, "applications", application.id), { status: "rejected", decidedAt: serverTimestamp(), updatedAt: serverTimestamp() });
       });
+      if (usingShootRoom && selectedBookings.length) {
+        const actorSummaries = selectedBookings.map((application) => ({
+          uid: application.actorUid,
+          name: actorDetails[application.actorUid]?.name || "Booked actor",
+          photo: actorDetails[application.actorUid]?.photo || "",
+        }));
+        batch.set(doc(db, "shootRooms", shootRoomId), {
+          agencyId: senderUid,
+          agencyName: brief.agencyName,
+          briefId: brief.id,
+          briefTitle: brief.title,
+          participantUids: [senderUid, ...selectedBookings.map((application) => application.actorUid)],
+          actorSummaries,
+          readBy: [senderUid],
+          deletedFor: [],
+          lastMessage: "Shoot room opened for final production communication.",
+          lastSenderUid: senderUid,
+          lastMessageAt: serverTimestamp(),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      }
       await batch.commit();
       await Promise.all([
         ...selectedBookings.map((application) => notifyQuietly({
@@ -474,8 +503,8 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
           senderUid,
           type: "booking_confirmed",
           title: `Final booking details: ${brief.title}`,
-          body: `${message.trim()} ${whatsappLink.trim() ? "Your WhatsApp group link is ready in My Applications." : "Your agency will share any remaining production details directly."}`,
-          href: "/actor/briefs",
+          body: `${message.trim()} ${usingShootRoom ? "Your shoot room is ready in Inbox, under Shoot Rooms." : "Your WhatsApp group link is ready in My Applications."}`,
+          href: usingShootRoom ? `/actor/inbox?shoot=${shootRoomId}` : "/actor/briefs",
         })),
         ...notSelectedApplications.map((application) => notifyQuietly({
           recipientUid: application.actorUid,
@@ -561,13 +590,37 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
             <span className="mb-2 block text-sm font-bold text-slate-700">Message to booked actors</span>
             <textarea required rows={5} value={message} onChange={(event) => setMessage(event.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
           </label>
-          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-            <label className="block">
-              <span className="mb-2 flex items-center gap-2 text-sm font-bold text-emerald-900"><MessageCircle className="size-4" />WhatsApp group link</span>
-              <input required type="url" value={whatsappLink} onChange={(event) => setWhatsappLink(event.target.value)} placeholder="https://chat.whatsapp.com/..." className="min-h-12 w-full rounded-xl border border-emerald-200 bg-white px-4 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" />
-            </label>
-            <p className="mt-2 text-xs font-semibold text-emerald-700">This link appears with the message in each booked actor notification and on their booked application card.</p>
-          </div>
+          <section className="rounded-2xl border border-brand-silver/70 bg-white p-4">
+            <p className="text-sm font-bold text-brand-navy">Final communication channel</p>
+            <p className="mt-1 text-sm text-slate-600">Choose where booked actors should receive production-day communication.</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <button type="button" onClick={() => setCommsMode("whatsapp")} className={`rounded-2xl border-2 p-4 text-left transition ${commsMode === "whatsapp" ? "border-emerald-500 bg-emerald-50" : "border-slate-200 bg-white hover:border-emerald-200"}`}>
+                <MessageCircle className="size-5 text-emerald-600" />
+                <p className="mt-3 font-bold text-brand-navy">Paste WhatsApp link</p>
+                <p className="mt-1 text-sm leading-5 text-slate-600">Actors receive the final booking message and join the WhatsApp group.</p>
+              </button>
+              <button type="button" onClick={() => setCommsMode("shootRoom")} className={`rounded-2xl border-2 p-4 text-left transition ${commsMode === "shootRoom" ? "border-brand-blue bg-brand-ice" : "border-slate-200 bg-white hover:border-brand-cyan"}`}>
+                <UsersRound className="size-5 text-brand-blue" />
+                <p className="mt-3 font-bold text-brand-navy">Use CASTARZ shoot room</p>
+                <p className="mt-1 text-sm leading-5 text-slate-600">Creates a private production room with the agency and booked actors only.</p>
+              </button>
+            </div>
+          </section>
+          {commsMode === "whatsapp" && (
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+              <label className="block">
+                <span className="mb-2 flex items-center gap-2 text-sm font-bold text-emerald-900"><MessageCircle className="size-4" />WhatsApp group link</span>
+                <input required type="url" value={whatsappLink} onChange={(event) => setWhatsappLink(event.target.value)} placeholder="https://chat.whatsapp.com/..." className="min-h-12 w-full rounded-xl border border-emerald-200 bg-white px-4 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" />
+              </label>
+              <p className="mt-2 text-xs font-semibold text-emerald-700">This link appears with the message in each booked actor notification and on their booked application card.</p>
+            </div>
+          )}
+          {commsMode === "shootRoom" && (
+            <div className="rounded-2xl border border-brand-silver/70 bg-brand-ice p-4">
+              <p className="font-bold text-brand-navy">CASTARZ will create a shoot room</p>
+              <p className="mt-1 text-sm leading-6 text-slate-600">Booked actors will see it in Inbox under Shoot Rooms. Actors can message the room, but they will not get profile links or private actor-to-actor chat actions.</p>
+            </div>
+          )}
           {error && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</p>}
           <div className="grid grid-cols-2 gap-3">
             <button type="button" onClick={onClose} className="min-h-12 rounded-xl border border-slate-300 font-bold text-slate-600 hover:bg-slate-50">Cancel</button>

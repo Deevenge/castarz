@@ -25,6 +25,8 @@ export interface AgentBrief {
   talentNeeded: number;
   closeMessage: string;
   whatsappLink: string;
+  shootRoomId: string;
+  finalCommsMode: string;
   createdAt?: Timestamp;
 }
 
@@ -51,6 +53,8 @@ export function briefFromDocument(id: string, data: DocumentData): AgentBrief {
     talentNeeded: typeof data.talentNeeded === "number" && Number.isFinite(data.talentNeeded) ? data.talentNeeded : 0,
     closeMessage: typeof data.closeMessage === "string" ? data.closeMessage : "",
     whatsappLink: typeof data.whatsappLink === "string" ? data.whatsappLink : "",
+    shootRoomId: typeof data.shootRoomId === "string" ? data.shootRoomId : "",
+    finalCommsMode: typeof data.finalCommsMode === "string" ? data.finalCommsMode : "",
     createdAt: data.createdAt,
   };
 }

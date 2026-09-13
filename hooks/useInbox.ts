@@ -24,9 +24,11 @@ function asNotificationType(value: unknown): NotificationType {
     "connection_approved",
     "connection_declined",
     "application_received",
+    "application_shortlisted",
     "application_standby",
     "application_rejected",
     "booking_confirmed",
+    "brief_deleted",
     "brief_closed",
   ];
   return allowed.includes(value as NotificationType) ? (value as NotificationType) : "application_received";

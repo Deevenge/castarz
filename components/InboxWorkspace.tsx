@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowUpRight, Bell, CheckCheck, CheckCircle2, Handshake, LoaderCircle, MessageCircle, Search, Send, Sparkles, Trash2, UserPlus, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Bell, CheckCheck, CheckCircle2, Handshake, LoaderCircle, MessageCircle, Search, Send, Sparkles, Trash2, UserPlus, UsersRound, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -9,9 +9,11 @@ import { type FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState }
 import { useAuth } from "@/context/AuthContext";
 import { type InboxItem, useInbox } from "@/hooks/useInbox";
 import { type ChatConversation, useChatMessages, useChats } from "@/hooks/useChats";
+import { type ShootRoom, useShootMessages, useShootRooms } from "@/hooks/useShootRooms";
 import { deleteConversationForMe, markConversationRead, sendChatMessage } from "@/lib/chat";
 import { db } from "@/lib/firebase";
 import type { NotificationType } from "@/lib/notify";
+import { deleteShootRoomForMe, markShootRoomRead, sendShootMessage } from "@/lib/shoot-room";
 
 const tone: Record<NotificationType, string> = {
   connection_request: "bg-brand-cyan/20 text-brand-blue",
@@ -46,7 +48,7 @@ const quickPrompts = [
 ];
 
 type DeleteTarget = {
-  kind: "chat" | "notification";
+  kind: "chat" | "shoot" | "notification";
   id: string;
   title: string;
   body: string;
@@ -83,11 +85,14 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
   const searchParams = useSearchParams();
   const requestedChat = searchParams.get("chat") ?? "";
   const { user } = useAuth();
-  const [tab, setTab] = useState<"chats" | "notifications">("chats");
+  const requestedShoot = searchParams.get("shoot") ?? "";
+  const [tab, setTab] = useState<"chats" | "shoots" | "notifications">(requestedShoot ? "shoots" : "chats");
   const [selectedChatId, setSelectedChatId] = useState("");
+  const [selectedShootId, setSelectedShootId] = useState("");
   const [selectedNotificationId, setSelectedNotificationId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
+  const [shootDraft, setShootDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -96,12 +101,18 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
   const longPressFired = useRef(false);
   const { items, loading: notificationsLoading, error: notificationsError, unreadCount } = useInbox();
   const { conversations, loading: chatsLoading, error: chatsError, unreadChatCount } = useChats();
+  const { rooms, loading: shootsLoading, error: shootsError, unreadShootCount } = useShootRooms();
   const requestedOrSelectedChat = selectedChatId || (requestedChat === ignoredRequestedChat ? "" : requestedChat);
+  const requestedOrSelectedShoot = selectedShootId || requestedShoot;
   const activeChatId = conversations.some((item) => item.id === requestedOrSelectedChat) ? requestedOrSelectedChat : "";
+  const activeShootId = rooms.some((item) => item.id === requestedOrSelectedShoot) ? requestedOrSelectedShoot : "";
   const { messages, messagesLoading, messagesError } = useChatMessages(activeChatId);
+  const { messages: shootMessages, messagesLoading: shootMessagesLoading, messagesError: shootMessagesError } = useShootMessages(activeShootId);
   const selectedChat = conversations.find((item) => item.id === activeChatId) ?? null;
+  const selectedShoot = rooms.find((item) => item.id === activeShootId) ?? null;
   const selectedNotification = selectedNotificationId ? items.find((item) => item.id === selectedNotificationId) ?? null : null;
   const activeConversationId = selectedChat?.id ?? "";
+  const activeShootRoomId = selectedShoot?.id ?? "";
 
   const filteredConversations = useMemo(() => {
     if (!user) return [];
@@ -112,12 +123,25 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
     });
   }, [conversations, search, user]);
 
+  const filteredShootRooms = useMemo(() => {
+    if (!user) return [];
+    const needle = search.trim().toLowerCase();
+    return rooms.filter((room) => !needle || `${room.briefTitle} ${room.agencyName} ${room.lastMessage}`.toLowerCase().includes(needle));
+  }, [rooms, search, user]);
+
   useEffect(() => {
     if (!user || !selectedChat) return;
     if (selectedChat.lastSenderUid && selectedChat.lastSenderUid !== user.uid && !selectedChat.readBy.includes(user.uid)) {
       void markConversationRead(selectedChat.id, user.uid);
     }
   }, [selectedChat, user]);
+
+  useEffect(() => {
+    if (!user || !selectedShoot) return;
+    if (selectedShoot.lastSenderUid && selectedShoot.lastSenderUid !== user.uid && !selectedShoot.readBy.includes(user.uid)) {
+      void markShootRoomRead(selectedShoot.id, user.uid);
+    }
+  }, [selectedShoot, user]);
 
   async function openNotification(item: InboxItem) {
     setSelectedNotificationId(item.id);
@@ -174,6 +198,9 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
           setIgnoredRequestedChat(requestedChat);
           setSelectedChatId("");
         }
+      } else if (deleteTarget.kind === "shoot") {
+        await deleteShootRoomForMe(deleteTarget.id, user.uid);
+        if (activeShootId === deleteTarget.id) setSelectedShootId("");
       } else {
         await deleteDoc(doc(db, "notifications", deleteTarget.id));
         if (selectedNotificationId === deleteTarget.id) setSelectedNotificationId(null);
@@ -198,7 +225,19 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
     }
   }
 
-  if (chatsLoading || notificationsLoading) {
+  async function submitShootMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!user || !activeShootRoomId || !shootDraft.trim()) return;
+    setSending(true);
+    try {
+      await sendShootMessage(activeShootRoomId, user.uid, shootDraft);
+      setShootDraft("");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  if (chatsLoading || shootsLoading || notificationsLoading) {
     return <div className="flex min-h-[50vh] items-center justify-center"><LoaderCircle className="size-7 animate-spin text-brand-blue" /></div>;
   }
 
@@ -211,14 +250,18 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
           <p className="mt-2 max-w-2xl text-slate-600">Private casting conversations, smart follow-ups, and every important update in one polished workspace.</p>
         </div>
         <div className="rounded-2xl bg-brand-navy px-4 py-3 text-sm font-bold text-white shadow-lg shadow-brand-navy/15">
-          {unreadChatCount + unreadCount} unread
+          {unreadChatCount + unreadShootCount + unreadCount} unread
         </div>
       </header>
 
-      <div className="mb-5 grid grid-cols-2 rounded-2xl bg-white p-1.5 shadow-sm ring-1 ring-brand-silver/70">
+      <div className="mb-5 grid grid-cols-3 rounded-2xl bg-white p-1.5 shadow-sm ring-1 ring-brand-silver/70">
         <button type="button" onClick={() => setTab("chats")} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${tab === "chats" ? "bg-brand-navy text-white shadow-sm" : "text-slate-500 hover:bg-brand-ice"}`}>
           <MessageCircle className="size-4" />Chats
           {unreadChatCount > 0 && <span className="rounded-full bg-brand-cyan px-1.5 text-[10px] leading-4 text-brand-navy">{unreadChatCount > 9 ? "9+" : unreadChatCount}</span>}
+        </button>
+        <button type="button" onClick={() => setTab("shoots")} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${tab === "shoots" ? "bg-brand-navy text-white shadow-sm" : "text-slate-500 hover:bg-brand-ice"}`}>
+          <UsersRound className="size-4" />Shoot Rooms
+          {unreadShootCount > 0 && <span className="rounded-full bg-brand-cyan px-1.5 text-[10px] leading-4 text-brand-navy">{unreadShootCount > 9 ? "9+" : unreadShootCount}</span>}
         </button>
         <button type="button" onClick={() => setTab("notifications")} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${tab === "notifications" ? "bg-brand-navy text-white shadow-sm" : "text-slate-500 hover:bg-brand-ice"}`}>
           <Bell className="size-4" />Notifications
@@ -331,6 +374,107 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
             )}
           </div>
         )
+      ) : tab === "shoots" ? (
+        shootsError ? (
+          <ErrorPanel icon={UsersRound} title="Shoot rooms unavailable" body={shootsError} />
+        ) : !rooms.length ? (
+          <EmptyShootPanel />
+        ) : (
+          <div className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-brand-silver/70 lg:grid lg:min-h-[640px] lg:grid-cols-[360px_minmax(0,1fr)]">
+            <aside className={`border-b border-brand-silver/70 bg-white lg:block lg:border-b-0 lg:border-r ${selectedShoot ? "hidden" : "block"}`}>
+              <div className="border-b border-brand-silver/70 p-4">
+                <label className="relative block">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                  <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search shoot rooms" className="min-h-11 w-full rounded-2xl border border-slate-200 bg-brand-ice/60 pl-10 pr-4 text-sm outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
+                </label>
+              </div>
+              <div className="max-h-[420px] overflow-y-auto lg:max-h-[580px]">
+                {filteredShootRooms.map((room) => {
+                  if (!user) return null;
+                  const unread = Boolean(room.lastSenderUid && room.lastSenderUid !== user.uid && !room.readBy.includes(user.uid));
+                  const lastFromMe = room.lastSenderUid === user.uid;
+                  const status = lastFromMe ? shootDeliveryLabel(room, user.uid) : null;
+                  return (
+                    <button
+                      key={room.id}
+                      type="button"
+                      onClick={(event) => { if (!ignoreClickAfterLongPress(event)) setSelectedShootId(room.id); }}
+                      className={`flex w-full gap-3 border-b border-slate-100 p-4 text-left transition ${unread ? "bg-brand-ice/80" : "hover:bg-slate-50"}`}
+                      {...longPressHandlers(() => setDeleteTarget({ kind: "shoot", id: room.id, title: room.briefTitle, body: "Remove this shoot room from your inbox. New production messages can bring it back." }))}
+                    >
+                      <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-brand-navy text-brand-cyan">
+                        <UsersRound className="size-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={`truncate text-brand-navy ${unread ? "font-extrabold" : "font-bold"}`}>{room.briefTitle}</p>
+                          <span className={`text-xs ${unread ? "font-bold text-brand-blue" : "text-slate-400"}`}>{timeLabel(room.lastMessageAtMs || room.updatedAtMs)}</span>
+                        </div>
+                        <p className="mt-0.5 text-xs font-bold uppercase tracking-[0.12em] text-brand-blue">{room.actorSummaries.length} booked actor{room.actorSummaries.length === 1 ? "" : "s"}</p>
+                        <div className="mt-1 flex items-center gap-2">
+                          {status && <span className="inline-flex shrink-0 items-center gap-1 text-xs font-bold text-brand-blue"><CheckCheck className="size-3.5" />{status}</span>}
+                          <p className={`truncate text-sm ${unread ? "font-extrabold text-brand-navy" : "text-slate-500"}`}>{room.lastMessage || "Shoot room ready"}</p>
+                        </div>
+                      </div>
+                      {unread && <span className="mt-2 flex min-w-5 items-center justify-center rounded-full bg-brand-blue px-1.5 text-[10px] font-bold leading-5 text-white">1</span>}
+                    </button>
+                  );
+                })}
+                {!filteredShootRooms.length && <p className="p-6 text-center text-sm text-slate-500">No shoot rooms match that search.</p>}
+              </div>
+            </aside>
+
+            {selectedShoot && user ? (
+              <section className="flex min-h-[620px] flex-col bg-[#fbfcff]">
+                <ShootRoomHeader room={selectedShoot} uid={user.uid} onBack={() => setSelectedShootId("")} />
+                <div className="flex-1 space-y-4 overflow-y-auto px-4 py-5 sm:px-6">
+                  {shootMessagesLoading ? (
+                    <div className="flex min-h-60 items-center justify-center"><LoaderCircle className="size-6 animate-spin text-brand-blue" /></div>
+                  ) : shootMessagesError ? (
+                    <ErrorPanel icon={UsersRound} title="Shoot messages unavailable" body={shootMessagesError} />
+                  ) : shootMessages.length ? (
+                    shootMessages.map((message, index) => {
+                      const mine = message.senderUid === user.uid;
+                      const showStatus = mine && index === shootMessages.length - 1;
+                      return (
+                        <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                          <div className={`max-w-[82%] rounded-3xl px-4 py-3 shadow-sm sm:max-w-[70%] ${mine ? "rounded-br-md bg-brand-blue text-white" : "rounded-bl-md bg-white text-slate-700 ring-1 ring-brand-silver/70"}`}>
+                            {!mine && <p className="mb-1 text-xs font-black uppercase tracking-[0.12em] text-brand-blue">{shootSenderName(selectedShoot, message.senderUid, user.uid)}</p>}
+                            <p className="whitespace-pre-wrap leading-6">{message.body}</p>
+                            <p className={`mt-1 flex items-center justify-end gap-1 text-[11px] ${mine ? "text-white/75" : "text-slate-400"}`}>
+                              {timeLabel(message.createdAtMs)}
+                              {showStatus && <span className="inline-flex items-center gap-0.5"><CheckCheck className="size-3.5" />{shootDeliveryLabel(selectedShoot, user.uid)}</span>}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="mx-auto flex max-w-xl flex-col items-center justify-center py-10 text-center">
+                      <div className="flex size-16 items-center justify-center rounded-3xl bg-brand-navy text-brand-cyan shadow-lg shadow-brand-navy/15"><UsersRound className="size-7" /></div>
+                      <h2 className="mt-5 text-2xl font-bold text-brand-navy">Production room ready</h2>
+                      <p className="mt-2 text-slate-600">Keep arrival times, wardrobe updates, call-sheet notes, and day-of-production messages here.</p>
+                    </div>
+                  )}
+                </div>
+                <div className="border-t border-brand-silver/70 bg-white p-4 sm:p-5">
+                  <form onSubmit={submitShootMessage} className="flex items-end gap-2">
+                    <textarea value={shootDraft} onChange={(event) => setShootDraft(event.target.value)} rows={1} maxLength={1000} placeholder="Write a production update..." className="min-h-12 flex-1 resize-none rounded-2xl border border-slate-200 bg-brand-ice/50 px-4 py-3 text-sm outline-none focus:border-brand-blue focus:bg-white focus:ring-4 focus:ring-brand-cyan/20" />
+                    <button type="submit" disabled={sending || !shootDraft.trim()} className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-brand-navy text-white shadow-lg shadow-brand-navy/15 transition hover:bg-brand-blue disabled:cursor-not-allowed disabled:opacity-45" aria-label="Send shoot message">
+                      {sending ? <LoaderCircle className="size-5 animate-spin" /> : <Send className="size-5" />}
+                    </button>
+                  </form>
+                </div>
+              </section>
+            ) : (
+              <section className="hidden min-h-[620px] flex-col items-center justify-center bg-[#fbfcff] px-8 text-center lg:flex">
+                <div className="flex size-16 items-center justify-center rounded-3xl bg-brand-navy text-brand-cyan shadow-lg shadow-brand-navy/15"><UsersRound className="size-7" /></div>
+                <h2 className="mt-5 text-2xl font-bold text-brand-navy">Select a shoot room</h2>
+                <p className="mt-2 max-w-sm text-slate-600">Open a production room to manage booked-cast updates without leaving CASTARZ.</p>
+              </section>
+            )}
+          </div>
+        )
       ) : notificationsError ? (
         <ErrorPanel icon={Bell} title="Inbox unavailable" body={notificationsError} />
       ) : !items.length ? (
@@ -387,6 +531,17 @@ function Avatar({ name, photo }: { name: string; photo: string }) {
   );
 }
 
+function shootDeliveryLabel(room: ShootRoom, uid: string) {
+  if (room.lastSenderUid !== uid) return "";
+  return room.readBy.some((readerUid) => readerUid !== uid) ? "Opened" : "Sent";
+}
+
+function shootSenderName(room: ShootRoom, senderUid: string, viewerUid: string) {
+  if (senderUid === room.agencyId) return room.agencyName;
+  if (viewerUid !== room.agencyId) return "Booked actor";
+  return room.actorSummaries.find((actor) => actor.uid === senderUid)?.name ?? "Booked actor";
+}
+
 function deliveryLabel(conversation: ChatConversation, uid: string) {
   if (conversation.lastSenderUid !== uid) return "";
   return conversation.readBy.some((readerUid) => readerUid !== uid) ? "Opened" : "Sent";
@@ -413,6 +568,39 @@ function ChatHeader({ conversation, uid, onBack }: { conversation: ChatConversat
   );
 }
 
+function ShootRoomHeader({ room, uid, onBack }: { room: ShootRoom; uid: string; onBack: () => void }) {
+  const isAgency = uid === room.agencyId;
+  return (
+    <header className="border-b border-brand-silver/70 bg-white px-4 py-4 sm:px-6">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <button type="button" onClick={onBack} className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-ice text-brand-navy lg:hidden" aria-label="Back to shoot rooms">
+            <ArrowLeft className="size-5" />
+          </button>
+          <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-brand-navy text-brand-cyan">
+            <UsersRound className="size-5" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="truncate text-lg font-bold text-brand-navy">{room.briefTitle}</h2>
+            <p className="text-sm font-semibold text-slate-500">{isAgency ? `${room.actorSummaries.length} booked actors` : `${room.agencyName} production room`}</p>
+          </div>
+        </div>
+        <span className="hidden min-h-10 shrink-0 items-center rounded-xl border border-brand-silver px-3 text-sm font-bold text-brand-navy sm:flex">
+          Shoot Room
+        </span>
+      </div>
+      <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+        <span className="shrink-0 rounded-full bg-brand-navy px-3 py-1.5 text-xs font-bold text-brand-cyan">{room.agencyName}</span>
+        {room.actorSummaries.map((actor) => (
+          <span key={actor.uid} className="shrink-0 rounded-full bg-brand-ice px-3 py-1.5 text-xs font-bold text-brand-navy">
+            {isAgency ? actor.name : "Booked actor"}
+          </span>
+        ))}
+      </div>
+    </header>
+  );
+}
+
 function EmptyChatPanel() {
   return (
     <section className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-brand-silver/70">
@@ -426,6 +614,30 @@ function EmptyChatPanel() {
           <p className="text-sm font-bold tracking-[0.18em] text-brand-blue">CASTING CHAT</p>
           <div className="mt-5 space-y-3">
             {["Profile-first messaging", "Unread conversation tracking", "Quick prompts for professional openers", "Booking links and notifications beside chats"].map((item) => (
+              <div key={item} className="flex items-center gap-3 rounded-2xl bg-brand-ice/70 p-4 font-semibold text-brand-navy">
+                <CheckCircle2 className="size-5 text-brand-blue" />{item}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function EmptyShootPanel() {
+  return (
+    <section className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-brand-silver/70">
+      <div className="grid gap-0 lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="bg-brand-navy p-8 text-white sm:p-10">
+          <div className="flex size-16 items-center justify-center rounded-3xl bg-brand-cyan text-brand-navy shadow-xl shadow-black/10"><UsersRound className="size-8" /></div>
+          <h2 className="mt-7 text-3xl font-bold tracking-tight">Shoot rooms appear after a brief is finalized.</h2>
+          <p className="mt-4 leading-7 text-slate-300">When an agency chooses CASTARZ communication instead of WhatsApp, booked actors get a protected production room here.</p>
+        </div>
+        <div className="p-8 sm:p-10">
+          <p className="text-sm font-bold tracking-[0.18em] text-brand-blue">PRODUCTION COMMS</p>
+          <div className="mt-5 space-y-3">
+            {["Group updates for booked cast", "No private actor-to-actor chat actions", "Unread production message tracking", "Works alongside normal private chats"].map((item) => (
               <div key={item} className="flex items-center gap-3 rounded-2xl bg-brand-ice/70 p-4 font-semibold text-brand-navy">
                 <CheckCircle2 className="size-5 text-brand-blue" />{item}
               </div>
