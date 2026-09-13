@@ -97,12 +97,8 @@ export default function ActorDashboardPage() {
       let createdApplication = false;
       await runTransaction(db, async (transaction) => {
         const briefRef = doc(db, "briefs", brief.id);
-        const [freshBrief, existingApplication] = await Promise.all([
-          transaction.get(briefRef),
-          transaction.get(applicationRef),
-        ]);
+        const freshBrief = await transaction.get(briefRef);
         if (!freshBrief.exists()) throw new Error("missing-brief");
-        if (existingApplication.exists()) return;
         const data = freshBrief.data();
         const talentNeeded = typeof data.talentNeeded === "number" ? data.talentNeeded : 0;
         const applicationCount = typeof data.applicationCount === "number" ? data.applicationCount : 0;
@@ -125,9 +121,12 @@ export default function ActorDashboardPage() {
       });
       setNotice("Application sent. Your agent will review your profile and availability.");
     } catch (error) {
-      setNotice(error instanceof Error && error.message === "brief-full"
+      const message = error instanceof Error ? error.message : "";
+      setNotice(message === "brief-full"
         ? "This brief is full. The agency may close it soon."
-        : "We could not send your application. Please try again.");
+        : message.includes("already-exists")
+          ? "You have already applied for this brief."
+          : "We could not send your application. Please try again.");
     } finally {
       setApplyingId("");
     }
