@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Bell, CheckCircle2, Handshake, LoaderCircle, MessageCircle, Search, Send, Sparkles, UserPlus } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Bell, CheckCheck, CheckCircle2, Handshake, LoaderCircle, MessageCircle, Search, Send, Sparkles, UserPlus } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -78,12 +78,13 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [ignoredRequestedChat, setIgnoredRequestedChat] = useState("");
   const { items, loading: notificationsLoading, error: notificationsError, unreadCount } = useInbox();
   const { conversations, loading: chatsLoading, error: chatsError, unreadChatCount } = useChats();
-  const requestedOrSelectedChat = requestedChat || selectedChatId;
-  const activeChatId = conversations.some((item) => item.id === requestedOrSelectedChat) ? requestedOrSelectedChat : conversations[0]?.id || "";
+  const requestedOrSelectedChat = selectedChatId || (requestedChat === ignoredRequestedChat ? "" : requestedChat);
+  const activeChatId = conversations.some((item) => item.id === requestedOrSelectedChat) ? requestedOrSelectedChat : "";
   const { messages, messagesLoading, messagesError } = useChatMessages(activeChatId);
-  const selectedChat = conversations.find((item) => item.id === activeChatId) ?? conversations[0] ?? null;
+  const selectedChat = conversations.find((item) => item.id === activeChatId) ?? null;
   const selectedNotification = items.find((item) => item.id === selectedNotificationId) ?? items[0] ?? null;
   const activeConversationId = selectedChat?.id ?? "";
 
@@ -160,7 +161,7 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
           <EmptyChatPanel />
         ) : (
           <div className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-brand-silver/70 lg:grid lg:min-h-[640px] lg:grid-cols-[360px_minmax(0,1fr)]">
-            <aside className="border-b border-brand-silver/70 bg-white lg:border-b-0 lg:border-r">
+            <aside className={`border-b border-brand-silver/70 bg-white lg:block lg:border-b-0 lg:border-r ${selectedChat ? "hidden" : "block"}`}>
               <div className="border-b border-brand-silver/70 p-4">
                 <label className="relative block">
                   <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -172,19 +173,22 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
                   if (!user) return null;
                   const party = otherParty(conversation, user.uid);
                   const unread = Boolean(conversation.lastSenderUid && conversation.lastSenderUid !== user.uid && !conversation.readBy.includes(user.uid));
-                  const active = conversation.id === selectedChat?.id;
+                  const lastFromMe = conversation.lastSenderUid === user.uid;
+                  const status = lastFromMe ? deliveryLabel(conversation, user.uid) : null;
                   return (
-                    <button key={conversation.id} type="button" onClick={() => setSelectedChatId(conversation.id)} className={`flex w-full gap-3 border-b border-slate-100 p-4 text-left transition ${active ? "bg-brand-ice" : "hover:bg-slate-50"}`}>
+                    <button key={conversation.id} type="button" onClick={() => setSelectedChatId(conversation.id)} className={`flex w-full gap-3 border-b border-slate-100 p-4 text-left transition ${unread ? "bg-brand-ice/80" : "hover:bg-slate-50"}`}>
                       <Avatar name={party.name} photo={party.photo} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="truncate font-bold text-brand-navy">{party.name}</p>
-                          <span className="text-xs text-slate-400">{timeLabel(conversation.lastMessageAtMs || conversation.updatedAtMs)}</span>
+                          <p className={`truncate text-brand-navy ${unread ? "font-extrabold" : "font-bold"}`}>{party.name}</p>
+                          <span className={`text-xs ${unread ? "font-bold text-brand-blue" : "text-slate-400"}`}>{timeLabel(conversation.lastMessageAtMs || conversation.updatedAtMs)}</span>
                         </div>
-                        <p className="mt-0.5 text-xs font-bold uppercase tracking-[0.16em] text-brand-blue">{party.role}</p>
-                        <p className={`mt-1 truncate text-sm ${unread ? "font-bold text-brand-navy" : "text-slate-500"}`}>{conversation.lastMessage || "Conversation ready"}</p>
+                        <div className="mt-1 flex items-center gap-2">
+                          {status && <span className="inline-flex shrink-0 items-center gap-1 text-xs font-bold text-brand-blue"><CheckCheck className="size-3.5" />{status}</span>}
+                          <p className={`truncate text-sm ${unread ? "font-extrabold text-brand-navy" : "text-slate-500"}`}>{conversation.lastMessage || "Conversation ready"}</p>
+                        </div>
                       </div>
-                      {unread && <span className="mt-2 size-2.5 rounded-full bg-brand-blue" />}
+                      {unread && <span className="mt-2 flex min-w-5 items-center justify-center rounded-full bg-brand-blue px-1.5 text-[10px] font-bold leading-5 text-white">1</span>}
                     </button>
                   );
                 })}
@@ -192,22 +196,26 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
               </div>
             </aside>
 
-            {selectedChat && user && (
+            {selectedChat && user ? (
               <section className="flex min-h-[620px] flex-col bg-[#fbfcff]">
-                <ChatHeader conversation={selectedChat} uid={user.uid} />
+                <ChatHeader conversation={selectedChat} uid={user.uid} onBack={() => { setIgnoredRequestedChat(requestedChat); setSelectedChatId(""); }} />
                 <div className="flex-1 space-y-4 overflow-y-auto px-4 py-5 sm:px-6">
                   {messagesLoading ? (
                     <div className="flex min-h-60 items-center justify-center"><LoaderCircle className="size-6 animate-spin text-brand-blue" /></div>
                   ) : messagesError ? (
                     <ErrorPanel icon={MessageCircle} title="Messages unavailable" body={messagesError} />
                   ) : messages.length ? (
-                    messages.map((message) => {
+                    messages.map((message, index) => {
                       const mine = message.senderUid === user.uid;
+                      const showStatus = mine && index === messages.length - 1;
                       return (
                         <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                           <div className={`max-w-[82%] rounded-3xl px-4 py-3 shadow-sm sm:max-w-[70%] ${mine ? "rounded-br-md bg-brand-blue text-white" : "rounded-bl-md bg-white text-slate-700 ring-1 ring-brand-silver/70"}`}>
                             <p className="whitespace-pre-wrap leading-6">{message.body}</p>
-                            <p className={`mt-1 text-right text-[11px] ${mine ? "text-white/70" : "text-slate-400"}`}>{timeLabel(message.createdAtMs)}</p>
+                            <p className={`mt-1 flex items-center justify-end gap-1 text-[11px] ${mine ? "text-white/75" : "text-slate-400"}`}>
+                              {timeLabel(message.createdAtMs)}
+                              {showStatus && <span className="inline-flex items-center gap-0.5"><CheckCheck className="size-3.5" />{deliveryLabel(selectedChat, user.uid)}</span>}
+                            </p>
                           </div>
                         </div>
                       );
@@ -235,6 +243,12 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
                     </button>
                   </form>
                 </div>
+              </section>
+            ) : (
+              <section className="hidden min-h-[620px] flex-col items-center justify-center bg-[#fbfcff] px-8 text-center lg:flex">
+                <div className="flex size-16 items-center justify-center rounded-3xl bg-brand-navy text-brand-cyan shadow-lg shadow-brand-navy/15"><MessageCircle className="size-7" /></div>
+                <h2 className="mt-5 text-2xl font-bold text-brand-navy">Select a conversation</h2>
+                <p className="mt-2 max-w-sm text-slate-600">Open a person from the chat list to view messages, reply, and mark the conversation as opened.</p>
               </section>
             )}
           </div>
@@ -284,11 +298,19 @@ function Avatar({ name, photo }: { name: string; photo: string }) {
   );
 }
 
-function ChatHeader({ conversation, uid }: { conversation: ChatConversation; uid: string }) {
+function deliveryLabel(conversation: ChatConversation, uid: string) {
+  if (conversation.lastSenderUid !== uid) return "";
+  return conversation.readBy.some((readerUid) => readerUid !== uid) ? "Opened" : "Sent";
+}
+
+function ChatHeader({ conversation, uid, onBack }: { conversation: ChatConversation; uid: string; onBack: () => void }) {
   const party = otherParty(conversation, uid);
   return (
     <header className="flex items-center justify-between gap-3 border-b border-brand-silver/70 bg-white px-4 py-4 sm:px-6">
       <div className="flex min-w-0 items-center gap-3">
+        <button type="button" onClick={onBack} className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-ice text-brand-navy lg:hidden" aria-label="Back to chats">
+          <ArrowLeft className="size-5" />
+        </button>
         <Avatar name={party.name} photo={party.photo} />
         <div className="min-w-0">
           <h2 className="truncate text-lg font-bold text-brand-navy">{party.name}</h2>
