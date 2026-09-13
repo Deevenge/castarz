@@ -3,6 +3,13 @@
 :root {
   --background: #f7f9fd;
   --foreground: #071a38;
+  color-scheme: light;
+}
+
+:root.dark {
+  --background: #202733;
+  --foreground: #edf2f8;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -24,6 +31,143 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: none;
+}
+
+:root.dark body {
+  background: #202733;
+}
+
+:root.dark ::selection {
+  background: #89a8ff;
+  color: #18202b;
+}
+
+:root.dark * {
+  scrollbar-color: #59677a transparent;
+}
+
+:root.dark ::-webkit-scrollbar-thumb {
+  background: #59677a;
+}
+
+:root.dark .bg-white,
+:root.dark .bg-white\/95,
+:root.dark .bg-white\/90 {
+  background-color: rgb(43 52 65 / var(--tw-bg-opacity, 1));
+}
+
+:root.dark .bg-white\/95 {
+  background-color: rgb(43 52 65 / 0.94);
+}
+
+:root.dark .bg-white\/90 {
+  background-color: rgb(43 52 65 / 0.88);
+}
+
+:root.dark .bg-\[\#f6f9fd\],
+:root.dark .bg-brand-ice {
+  background-color: #202733;
+}
+
+:root.dark .bg-brand-ice\/40,
+:root.dark .bg-brand-ice\/55,
+:root.dark .bg-brand-ice\/60,
+:root.dark .bg-brand-ice\/70,
+:root.dark .bg-brand-ice\/80 {
+  background-color: rgb(56 66 82 / 0.62);
+}
+
+:root.dark .bg-slate-50,
+:root.dark .bg-slate-100 {
+  background-color: #384252;
+}
+
+:root.dark .bg-brand-navy {
+  background-color: #141b26;
+}
+
+:root.dark .bg-brand-blue {
+  background-color: #5e7df2;
+}
+
+:root.dark .bg-brand-cyan\/15,
+:root.dark .bg-brand-cyan\/20 {
+  background-color: rgb(126 162 255 / 0.22);
+}
+
+:root.dark .bg-gradient-to-r.from-brand-ice\/80.to-white {
+  --tw-gradient-from: rgb(56 66 82 / 0.78);
+  --tw-gradient-to: rgb(43 52 65 / 1);
+}
+
+:root.dark .border-brand-silver,
+:root.dark .border-brand-silver\/70,
+:root.dark .border-slate-100,
+:root.dark .border-slate-200,
+:root.dark .border-slate-300,
+:root.dark .ring-brand-silver,
+:root.dark .ring-brand-silver\/70,
+:root.dark .ring-slate-200 {
+  border-color: rgb(111 124 144 / 0.5);
+  --tw-ring-color: rgb(111 124 144 / 0.5);
+}
+
+:root.dark .text-brand-navy,
+:root.dark .text-slate-950,
+:root.dark .text-slate-900,
+:root.dark .text-slate-800,
+:root.dark .text-slate-700 {
+  color: #edf2f8;
+}
+
+:root.dark .text-slate-600 {
+  color: #c4cedc;
+}
+
+:root.dark .text-slate-500,
+:root.dark .text-slate-400,
+:root.dark .text-slate-300 {
+  color: #aab6c8;
+}
+
+:root.dark .text-brand-blue {
+  color: #9cb5ff;
+}
+
+:root.dark .text-brand-cyan {
+  color: #b8c9ff;
+}
+
+:root.dark input,
+:root.dark textarea,
+:root.dark select {
+  background-color: #252e3b;
+  border-color: rgb(111 124 144 / 0.62);
+  color: #edf2f8;
+}
+
+:root.dark input::placeholder,
+:root.dark textarea::placeholder {
+  color: #8d9aab;
+}
+
+:root.dark .shadow-slate-200\/60,
+:root.dark .shadow-brand-navy\/10,
+:root.dark .shadow-brand-navy\/15 {
+  --tw-shadow-color: rgb(0 0 0 / 0.24);
+  --tw-shadow: var(--tw-shadow-colored);
+}
+
+:root.dark .hover\:bg-brand-ice:hover,
+:root.dark .hover\:bg-slate-50:hover,
+:root.dark .hover\:bg-slate-100:hover,
+:root.dark .hover\:bg-white:hover {
+  background-color: #3a4555;
+}
+
+:root.dark .hover\:text-brand-navy:hover,
+:root.dark .hover\:text-slate-900:hover {
+  color: #ffffff;
 }
 
 ::selection {

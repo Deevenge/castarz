@@ -29,6 +29,12 @@ service cloud.firestore {
     function briefData() {
       return get(/databases/$(database)/documents/briefs/$(request.resource.data.briefId)).data;
     }
+    function briefHasSpace() {
+      return !(briefData().talentNeeded is number)
+        || briefData().talentNeeded <= 0
+        || !(briefData().applicationCount is number)
+        || briefData().applicationCount < briefData().talentNeeded;
+    }
     function unchanged(field) {
       return request.resource.data[field] == resource.data[field];
     }
@@ -71,6 +77,29 @@ service cloud.firestore {
           && resource.data.visibility == 'network'
           && approvedConnection(resource.data.agencyId, request.auth.uid);
       }
+      function actorApplicationCountIncrement() {
+        return isActor()
+          && resource.data.status == 'published'
+          && !exists(/databases/$(database)/documents/applications/$(briefId + '_' + request.auth.uid))
+          && existsAfter(/databases/$(database)/documents/applications/$(briefId + '_' + request.auth.uid))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['applicationCount', 'updatedAt'])
+          && request.resource.data.applicationCount is number
+          && (
+            (
+              resource.data.applicationCount is number
+              && request.resource.data.applicationCount == resource.data.applicationCount + 1
+            )
+            || (
+              !(resource.data.applicationCount is number)
+              && request.resource.data.applicationCount == 1
+            )
+          )
+          && (
+            !(resource.data.talentNeeded is number)
+            || resource.data.talentNeeded <= 0
+            || request.resource.data.applicationCount <= resource.data.talentNeeded
+          );
+      }
 
       allow get: if signedIn() && (ownsBrief() || publishedPublic() || publishedNetwork() || appliedToBrief(briefId));
       allow list: if signedIn() && (ownsBrief() || publishedPublic() || publishedNetwork());
@@ -78,9 +107,10 @@ service cloud.firestore {
         && request.resource.data.agencyId == request.auth.uid
         && request.resource.data.status in ['draft', 'published', 'closed']
         && request.resource.data.visibility in ['public', 'network'];
-      allow update: if isAgent()
-        && resource.data.agencyId == request.auth.uid
-        && request.resource.data.agencyId == resource.data.agencyId;
+      allow update: if (isAgent()
+          && resource.data.agencyId == request.auth.uid
+          && request.resource.data.agencyId == resource.data.agencyId)
+        || actorApplicationCountIncrement();
       allow delete: if isAgent()
         && resource.data.agencyId == request.auth.uid;
     }
@@ -94,6 +124,7 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/briefs/$(request.resource.data.briefId))
         && request.resource.data.agencyId == briefData().agencyId
         && briefData().status == 'published'
+        && briefHasSpace()
         && (
           briefData().visibility == 'public'
           || (briefData().visibility == 'network'

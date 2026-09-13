@@ -89,6 +89,19 @@ export default function BriefsPage() {
     }, {});
   }, [applications]);
 
+  useEffect(() => {
+    if (!user || !briefs.length) return;
+    briefs.forEach((brief) => {
+      const actualCount = applicationsByBrief[brief.id]?.length ?? 0;
+      if (brief.applicationCount !== actualCount) {
+        void updateDoc(doc(db, "briefs", brief.id), {
+          applicationCount: actualCount,
+          updatedAt: serverTimestamp(),
+        }).catch(() => undefined);
+      }
+    });
+  }, [applicationsByBrief, briefs, user]);
+
   async function saveBrief(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!user || !profile) return;
@@ -98,9 +111,11 @@ export default function BriefsPage() {
       const agency = await getDoc(doc(db, "agencies", user.uid));
       const agencyName = typeof agency.data()?.name === "string" && agency.data()?.name.trim() ? agency.data()?.name : profile.email;
       const talentNeeded = Math.max(0, Number.parseInt(form.talentNeeded, 10) || 0);
+      const applicationCount = editingBrief ? Math.max(editingBrief.applicationCount, applicationsByBrief[editingBrief.id]?.length ?? 0) : 0;
       const payload = {
         ...form,
         talentNeeded,
+        applicationCount,
         agencyId: user.uid,
         agencyName,
         shootDateTime: form.shootDate,
@@ -314,9 +329,11 @@ export default function BriefsPage() {
 }
 
 function BriefCard({ brief, applications, onClose, onEdit, onDelete }: { brief: AgentBrief; applications: Application[]; onClose: () => void; onEdit: () => void; onDelete: () => void }) {
+  const appliedCount = Math.max(applications.length, brief.applicationCount);
   const bookedCount = applications.filter((application) => application.status === "booked").length;
-  const remaining = Math.max((brief.talentNeeded || 0) - bookedCount, 0);
-  const totalLabel = brief.talentNeeded ? `${remaining} remaining of ${brief.talentNeeded}` : `${bookedCount} booked`;
+  const remaining = brief.talentNeeded ? Math.max(brief.talentNeeded - appliedCount, 0) : 0;
+  const full = Boolean(brief.talentNeeded && remaining === 0);
+  const totalLabel = brief.talentNeeded ? (full ? `Full · ${brief.talentNeeded} spots` : `${remaining} spots remaining of ${brief.talentNeeded}`) : `${appliedCount} applied`;
   const statusTone = brief.status === "closed" ? "bg-slate-100 text-slate-600" : brief.status === "draft" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700";
 
   return (
@@ -331,14 +348,15 @@ function BriefCard({ brief, applications, onClose, onEdit, onDelete }: { brief: 
           <p className="mt-1 text-sm text-slate-600">{brief.production}</p>
         </div>
         <div className="rounded-2xl bg-brand-ice px-4 py-3 text-right">
-          <p className="text-2xl font-bold text-brand-navy">{brief.talentNeeded ? remaining : bookedCount}</p>
-          <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{brief.talentNeeded ? "Still needed" : "Booked"}</p>
+          <p className="text-2xl font-bold text-brand-navy">{brief.talentNeeded ? (full ? "Full" : remaining) : appliedCount}</p>
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{brief.talentNeeded ? "Open spots" : "Applications"}</p>
         </div>
       </div>
       <div className="mt-5 flex flex-wrap gap-4 text-sm font-semibold text-slate-600">
         <span className="flex items-center gap-1"><MapPin className="size-4 text-brand-blue" />{brief.location || "Location pending"}</span>
         <span className="flex items-center gap-1"><Clock3 className="size-4 text-brand-blue" />{briefDateLabel(brief)} · {briefCallTimeLabel(brief)}</span>
         <span className="flex items-center gap-1"><UsersRound className="size-4 text-brand-blue" />{totalLabel}</span>
+        <span className="flex items-center gap-1"><CheckCircle2 className="size-4 text-brand-blue" />{bookedCount} booked</span>
       </div>
       {(brief.ageRange || brief.wardrobe || brief.wardrobeImage) && (
         <div className="mt-5 grid gap-3 rounded-2xl bg-brand-ice/55 p-4 md:grid-cols-[1fr_160px]">
