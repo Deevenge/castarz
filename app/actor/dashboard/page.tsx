@@ -105,8 +105,7 @@ export default function ActorDashboardPage() {
         if (existingApplication.exists()) return;
         const data = freshBrief.data();
         const talentNeeded = typeof data.talentNeeded === "number" ? data.talentNeeded : 0;
-        if (typeof data.applicationCount !== "number") throw new Error("brief-count-missing");
-        const applicationCount = data.applicationCount;
+        const applicationCount = typeof data.applicationCount === "number" ? data.applicationCount : 0;
         if (talentNeeded > 0 && applicationCount >= talentNeeded) throw new Error("brief-full");
         transaction.set(applicationRef, { briefId: brief.id, actorUid: user.uid, agencyId: brief.agencyId, status: "pending", createdAt: serverTimestamp() });
         transaction.update(briefRef, { applicationCount: applicationCount + 1, updatedAt: serverTimestamp() });
@@ -128,9 +127,7 @@ export default function ActorDashboardPage() {
     } catch (error) {
       setNotice(error instanceof Error && error.message === "brief-full"
         ? "This brief is full. The agency may close it soon."
-        : error instanceof Error && error.message === "brief-count-missing"
-          ? "This brief is syncing its availability. Please try again shortly."
-          : "We could not send your application. Please try again.");
+        : "We could not send your application. Please try again.");
     } finally {
       setApplyingId("");
     }

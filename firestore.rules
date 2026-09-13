@@ -33,18 +33,30 @@ service cloud.firestore {
       return getAfter(/databases/$(database)/documents/briefs/$(request.resource.data.briefId)).data;
     }
     function briefHasSpace() {
-      return briefData().applicationCount is number
-        && (
-          !(briefData().talentNeeded is number)
-          || briefData().talentNeeded <= 0
-          || briefData().applicationCount < briefData().talentNeeded
+      return !(briefData().talentNeeded is number)
+        || briefData().talentNeeded <= 0
+        || (
+          briefData().applicationCount is number
+          && briefData().applicationCount < briefData().talentNeeded
+        )
+        || (
+          !(briefData().applicationCount is number)
+          && 0 < briefData().talentNeeded
         );
     }
     function briefCountIncrementedWithApplication() {
       return existsAfter(/databases/$(database)/documents/briefs/$(request.resource.data.briefId))
-        && briefData().applicationCount is number
         && briefAfterData().applicationCount is number
-        && briefAfterData().applicationCount == briefData().applicationCount + 1;
+        && (
+          (
+            briefData().applicationCount is number
+            && briefAfterData().applicationCount == briefData().applicationCount + 1
+          )
+          || (
+            !(briefData().applicationCount is number)
+            && briefAfterData().applicationCount == 1
+          )
+        );
     }
     function unchanged(field) {
       return request.resource.data[field] == resource.data[field];
@@ -94,9 +106,17 @@ service cloud.firestore {
           && !exists(/databases/$(database)/documents/applications/$(briefId + '_' + request.auth.uid))
           && existsAfter(/databases/$(database)/documents/applications/$(briefId + '_' + request.auth.uid))
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['applicationCount', 'updatedAt'])
-          && resource.data.applicationCount is number
           && request.resource.data.applicationCount is number
-          && request.resource.data.applicationCount == resource.data.applicationCount + 1
+          && (
+            (
+              resource.data.applicationCount is number
+              && request.resource.data.applicationCount == resource.data.applicationCount + 1
+            )
+            || (
+              !(resource.data.applicationCount is number)
+              && request.resource.data.applicationCount == 1
+            )
+          )
           && (
             !(resource.data.talentNeeded is number)
             || resource.data.talentNeeded <= 0
