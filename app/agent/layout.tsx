@@ -5,12 +5,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
-import { Bell, BriefcaseBusiness, ClipboardCheck, LayoutDashboard, LoaderCircle, LogOut, Settings, UsersRound } from "lucide-react";
+import { Bell, BriefcaseBusiness, ClipboardCheck, LayoutDashboard, LogOut, Settings, UsersRound } from "lucide-react";
 import { MobileTopBar } from "@/components/MobileTopBar";
+import { LogoLoader } from "@/components/LogoLoader";
 import { useAuth } from "@/context/AuthContext";
 import { useInbox } from "@/hooks/useInbox";
 import { db } from "@/lib/firebase";
-import logo from "@/app/images/logoz.png";
+import logo from "@/app/images/logoz.gif";
 
 const links = [
   { href: "/agent/dashboard", label: "Overview", icon: LayoutDashboard },
@@ -57,13 +58,13 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
   }
 
   if (loading || profile?.role !== "agent") {
-    return <main className="flex min-h-dvh items-center justify-center bg-brand-ice"><LoaderCircle className="size-7 animate-spin text-brand-blue" /></main>;
+    return <LogoLoader />;
   }
 
   return (
     <div className="min-h-dvh bg-[#f6f9fd] text-brand-navy">
       <aside className="fixed inset-y-0 left-0 hidden w-72 flex-col bg-brand-navy px-5 py-7 text-white lg:flex">
-        <div className="rounded-2xl bg-white p-3"><Image src={logo} alt="CASTARZ" className="h-auto w-48" priority /></div>
+        <div className="rounded-2xl bg-white p-3"><Image src={logo} alt="CASTARZ" className="h-auto w-48" priority unoptimized /></div>
         <p className="mt-4 text-xs font-bold tracking-[0.2em] text-brand-cyan">AGENCY CONSOLE</p>
         <div className="mt-10 rounded-2xl border border-white/10 bg-white/10 p-4 shadow-2xl shadow-black/10">
           <div className="relative flex size-12 items-center justify-center overflow-hidden rounded-2xl bg-brand-cyan font-extrabold text-brand-navy">

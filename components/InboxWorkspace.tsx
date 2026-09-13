@@ -44,10 +44,11 @@ function timeLabel(ms: number) {
 }
 
 export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; title: string; empty: string }) {
-  const { items, loading } = useInbox();
-  const [tab, setTab] = useState<"inbox" | "notifications">("notifications");
+  const { items, loading, error } = useInbox();
+  const [tab, setTab] = useState<"inbox" | "notifications">("inbox");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selected = items.find((item) => item.id === selectedId) ?? items[0] ?? null;
+  const displayedItems = tab === "inbox" ? items.filter((item) => !item.read) : items;
+  const selected = displayedItems.find((item) => item.id === selectedId) ?? displayedItems[0] ?? null;
   const unread = items.filter((item) => !item.read).length;
 
   async function openItem(item: InboxItem) {
@@ -60,9 +61,9 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
     }
   }
 
-  if (loading) {
-    return <div className="flex min-h-[50vh] items-center justify-center"><LoaderCircle className="size-7 animate-spin text-brand-blue" /></div>;
-  }
+  if (loading) return <div className="flex min-h-[50vh] items-center justify-center"><LoaderCircle className="size-7 animate-spin text-brand-blue" /></div>;
+
+  const emptyTitle = tab === "inbox" ? "Inbox is clear" : "No notifications yet";
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -81,25 +82,25 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
         </button>
       </div>
 
-      {tab === "inbox" ? (
-        <div className="rounded-3xl border border-brand-silver/70 bg-white p-8 text-center shadow-sm sm:p-10">
-          <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-brand-ice text-brand-blue"><MessageCircle className="size-7" /></div>
-          <h2 className="mt-5 text-xl font-bold text-brand-navy">Direct messages are coming</h2>
-          <p className="mx-auto mt-2 max-w-md text-slate-600">This space is reserved for future agency and actor conversations.</p>
+      {error ? (
+        <div className="rounded-3xl border border-red-100 bg-red-50 p-8 text-center text-red-700 shadow-sm">
+          <Bell className="mx-auto size-9" />
+          <h2 className="mt-4 text-xl font-bold">Inbox unavailable</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm">{error}</p>
         </div>
-      ) : !items.length ? (
+      ) : !displayedItems.length ? (
         <div className="rounded-3xl border-2 border-dashed border-brand-silver bg-white p-10 text-center">
-          <Bell className="mx-auto size-9 text-brand-blue" />
-          <h2 className="mt-4 text-xl font-bold">No notifications yet</h2>
+          {tab === "inbox" ? <MessageCircle className="mx-auto size-9 text-brand-blue" /> : <Bell className="mx-auto size-9 text-brand-blue" />}
+          <h2 className="mt-4 text-xl font-bold">{emptyTitle}</h2>
           <p className="mt-2 text-slate-600">{empty}</p>
         </div>
       ) : (
         <div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-brand-silver/70 md:grid md:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.3fr)]">
           <section className="border-b border-brand-silver/60 md:border-b-0 md:border-r">
             <div className="border-b border-brand-silver/60 px-5 py-4">
-              <h2 className="font-bold">Notifications</h2>
+              <h2 className="font-bold">{tab === "inbox" ? "Unread inbox" : "Notifications"}</h2>
             </div>
-            {items.map((item) => {
+            {displayedItems.map((item) => {
               const Icon = icon[item.type];
               const active = selected?.id === item.id;
               return (

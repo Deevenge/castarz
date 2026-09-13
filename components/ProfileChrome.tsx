@@ -2,8 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Camera, ChevronLeft, ChevronRight, Download, ImagePlus, LoaderCircle, Maximize2, UserRound, X } from "lucide-react";
+import { Camera, ChevronLeft, ChevronRight, Download, ImagePlus, Maximize2, UserRound, X } from "lucide-react";
 import { type ChangeEvent, type ReactNode, useState } from "react";
+import { LogoLoader } from "@/components/LogoLoader";
 import { actorCover, actorDisplayName, type DirectoryActor } from "@/lib/directory";
 
 export function ProfileCover({ src, alt }: { src: string; alt: string }) {
@@ -208,5 +209,5 @@ export function AgencyHeroCard({
 }
 
 export function LoadingScreen() {
-  return <div className="flex min-h-[50vh] items-center justify-center"><LoaderCircle className="size-7 animate-spin text-brand-blue" /></div>;
+  return <LogoLoader className="min-h-[50vh]" />;
 }

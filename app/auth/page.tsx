@@ -9,7 +9,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { type UserRole, useAuth } from "@/context/AuthContext";
 import { auth, db } from "@/lib/firebase";
-import logo from "@/app/images/logoz.png";
+import logo from "@/app/images/logoz.gif";
 
 type AuthMode = "signIn" | "signUp";
 
@@ -80,7 +80,7 @@ export default function AuthPage() {
   return (
     <main className="min-h-dvh bg-brand-ice px-4 py-6 sm:flex sm:items-center sm:justify-center sm:p-8">
       <section className="mx-auto flex w-full max-w-md flex-col sm:max-w-[440px]">
-        <div className="mb-8 px-2 text-center sm:mb-6"><Image src={logo} alt="CASTARZ — The Casting Network" priority className="mx-auto mb-4 h-auto w-60" /><p className="text-sm font-bold tracking-[0.24em] text-brand-blue">THE CASTING NETWORK</p><h1 className="mt-2 text-3xl font-bold tracking-tight text-brand-navy">{signUp ? "Join the cast" : "Welcome back"}</h1><p className="mt-2 text-base text-slate-600">{signUp ? "Start managing casting the smarter way." : "Sign in to continue to your casting workspace."}</p></div>
+        <div className="mb-8 px-2 text-center sm:mb-6"><Image src={logo} alt="CASTARZ — The Casting Network" priority unoptimized className="mx-auto mb-4 h-auto w-60" /><p className="text-sm font-bold tracking-[0.24em] text-brand-blue">THE CASTING NETWORK</p><h1 className="mt-2 text-3xl font-bold tracking-tight text-brand-navy">{signUp ? "Join the cast" : "Welcome back"}</h1><p className="mt-2 text-base text-slate-600">{signUp ? "Start managing casting the smarter way." : "Sign in to continue to your casting workspace."}</p></div>
         <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200 sm:p-8 sm:shadow-xl sm:shadow-slate-200/60">
           <div className="mb-6 grid grid-cols-2 rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Authentication options">
             <button type="button" onClick={() => { setMode("signIn"); setError(""); }} className={`min-h-11 rounded-lg text-sm font-semibold transition ${!signUp ? "bg-white text-slate-950 shadow-sm" : "text-slate-500"}`}>Sign in</button>

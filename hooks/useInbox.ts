@@ -35,7 +35,8 @@ function asNotificationType(value: unknown): NotificationType {
 export function useInbox() {
   const { user } = useAuth();
   const [items, setItems] = useState<InboxItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [loadedUid, setLoadedUid] = useState("");
 
   useEffect(() => {
     if (!user) return;
@@ -58,11 +59,17 @@ export function useInbox() {
       });
       next.sort((left, right) => right.createdAtMs - left.createdAtMs);
       setItems(next);
-      setLoading(false);
-    }, () => setLoading(false));
+      setError("");
+      setLoadedUid(user.uid);
+    }, (snapshotError) => {
+      console.error("Unable to load inbox notifications.", snapshotError);
+      setItems([]);
+      setError("We could not load your inbox. Please check that the latest Firestore rules are published.");
+      setLoadedUid(user.uid);
+    });
   }, [user]);
 
-  const visibleItems = useMemo(() => user ? items : [], [items, user]);
+  const visibleItems = useMemo(() => user ? items.filter((item) => item.recipientUid === user.uid) : [], [items, user]);
   const unreadCount = useMemo(() => visibleItems.filter((item) => !item.read).length, [visibleItems]);
-  return { items: visibleItems, loading: user ? loading : false, unreadCount };
+  return { items: visibleItems, loading: user ? loadedUid !== user.uid && !error : false, unreadCount, error: user ? error : "" };
 }

@@ -5,11 +5,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
-import { BriefcaseBusiness, House, LoaderCircle, LogOut, MessageCircle, UserRound, UsersRound } from "lucide-react";
+import { BriefcaseBusiness, House, LogOut, MessageCircle, UserRound, UsersRound } from "lucide-react";
 import { MobileTopBar } from "@/components/MobileTopBar";
+import { LogoLoader } from "@/components/LogoLoader";
 import { useAuth } from "@/context/AuthContext";
 import { useInbox } from "@/hooks/useInbox";
-import logo from "@/app/images/logoz.png";
+import logo from "@/app/images/logoz.gif";
 import { db } from "@/lib/firebase";
 
 const links = [
@@ -48,13 +49,13 @@ export default function ActorLayout({ children }: { children: ReactNode }) {
   }
 
   if (loading || profile?.role !== "actor") {
-    return <main className="flex min-h-dvh items-center justify-center bg-brand-ice"><LoaderCircle className="size-7 animate-spin text-brand-blue" /></main>;
+    return <LogoLoader />;
   }
 
   return (
     <div className="min-h-dvh bg-brand-ice text-brand-navy">
       <aside className="fixed inset-y-0 left-0 hidden w-72 flex-col border-r border-brand-silver/70 bg-white px-5 py-7 lg:flex">
-        <Image src={logo} alt="CASTARZ" className="h-auto w-48" priority />
+        <Image src={logo} alt="CASTARZ" className="h-auto w-48" priority unoptimized />
         <div className="mt-10 rounded-2xl bg-brand-ice p-4">
           <div className="flex size-11 items-center justify-center rounded-full bg-brand-blue text-white"><UserRound className="size-5" /></div>
           <p className="mt-3 truncate font-semibold">{actorName || "Complete your profile"}</p>

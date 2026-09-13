@@ -1,8 +1,8 @@
 "use client";
 
-import { LoaderCircle } from "lucide-react";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { LogoLoader } from "@/components/LogoLoader";
 import { useAuth } from "@/context/AuthContext";
 
 export default function HomePage() {
@@ -18,5 +18,5 @@ export default function HomePage() {
     router.replace(`/${profile.role}/dashboard`);
   }, [loading, profile, router, user]);
 
-  return <main className="flex min-h-dvh items-center justify-center bg-brand-ice"><LoaderCircle className="h-7 w-7 animate-spin text-brand-blue" aria-label="Loading" /></main>;
+  return <LogoLoader />;
 }
