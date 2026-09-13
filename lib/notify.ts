@@ -8,9 +8,11 @@ export type NotificationType =
   | "connection_approved"
   | "connection_declined"
   | "application_received"
+  | "application_shortlisted"
   | "application_standby"
   | "application_rejected"
   | "booking_confirmed"
+  | "brief_deleted"
   | "brief_closed";
 
 export interface NotificationPayload {

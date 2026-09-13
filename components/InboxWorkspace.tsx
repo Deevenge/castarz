@@ -18,9 +18,11 @@ const tone: Record<NotificationType, string> = {
   connection_approved: "bg-emerald-100 text-emerald-700",
   connection_declined: "bg-slate-100 text-slate-600",
   application_received: "bg-brand-ice text-brand-navy",
+  application_shortlisted: "bg-amber-100 text-amber-700",
   application_standby: "bg-amber-100 text-amber-700",
   application_rejected: "bg-red-50 text-red-700",
   booking_confirmed: "bg-emerald-100 text-emerald-700",
+  brief_deleted: "bg-red-50 text-red-700",
   brief_closed: "bg-brand-navy text-brand-cyan",
 };
 
@@ -29,9 +31,11 @@ const icon: Record<NotificationType, typeof Bell> = {
   connection_approved: Handshake,
   connection_declined: UserPlus,
   application_received: Sparkles,
+  application_shortlisted: Bell,
   application_standby: Bell,
   application_rejected: Bell,
   booking_confirmed: CheckCircle2,
+  brief_deleted: X,
   brief_closed: Handshake,
 };
 

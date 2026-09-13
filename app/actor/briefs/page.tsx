@@ -131,7 +131,7 @@ export default function MyApplicationsPage() {
 function Status({ status }: { status: Application["status"] }) {
   const style = status === "booked" ? "bg-emerald-50 text-emerald-700" : status === "rejected" ? "bg-red-50 text-red-700" : status === "standby" ? "bg-amber-50 text-amber-700" : "bg-brand-ice text-brand-navy";
   const Icon = status === "booked" ? CheckCircle2 : status === "rejected" ? XCircle : Clock3;
-  return <span className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-sm font-bold ${style}`}><Icon className="size-4" />{status === "pending" ? "Under review" : status === "standby" ? "Stand by" : status === "booked" ? "Booked" : "Not selected"}</span>;
+  return <span className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-sm font-bold ${style}`}><Icon className="size-4" />{status === "pending" ? "Under review" : status === "standby" ? "Shortlisted" : status === "booked" ? "Booked" : "Not selected"}</span>;
 }
 
 function statusCopy(status: Application["status"]) {
@@ -140,6 +140,6 @@ function statusCopy(status: Application["status"]) {
     : status === "rejected"
       ? "The agency has completed this selection. Keep your profile current for the next opportunity."
       : status === "standby"
-        ? "You remain in consideration. Your agency may update you soon."
+        ? "You have been shortlisted. Keep your availability close and stay on the lookout for the final booking update."
         : "Your application has been received and is waiting for agency review.";
 }

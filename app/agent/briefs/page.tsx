@@ -1,13 +1,13 @@
 "use client";
 
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import Image from "next/image";
 import { CheckCircle2, Clock3, Edit3, Globe2, ImagePlus, LoaderCircle, LockKeyhole, MapPin, MessageCircle, Plus, Send, Trash2, UsersRound, X } from "lucide-react";
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from "react";
 import { AgentApplicationsWorkspace } from "@/components/AgentApplicationsWorkspace";
 import { useAuth } from "@/context/AuthContext";
 import { briefCallTimeLabel, briefDateLabel, briefFromDocument, callTimeFromDateTime, type AgentBrief, type BriefStatus, type BriefVisibility } from "@/lib/agent-data";
-import { compressImageToDataUrl } from "@/lib/actor-profile";
+import { compressImageToDataUrl, normalizeActorProfile } from "@/lib/actor-profile";
 import { db } from "@/lib/firebase";
 import { notifyQuietly } from "@/lib/notify";
 
@@ -47,6 +47,13 @@ const blank: BriefForm = {
   status: "published",
   visibility: "public",
 };
+
+const deleteReasons = [
+  "Production dates changed",
+  "Client cancelled the brief",
+  "Casting direction changed",
+  "Brief posted by mistake",
+];
 
 export default function BriefsPage() {
   const { user, profile } = useAuth();
@@ -304,6 +311,7 @@ export default function BriefsPage() {
         <DeleteBriefDialog
           brief={deletingBrief}
           applications={applicationsByBrief[deletingBrief.id] ?? []}
+          senderUid={user?.uid ?? ""}
           onClose={() => setDeletingBrief(null)}
           onDone={(message) => {
             setDeletingBrief(null);
@@ -317,6 +325,7 @@ export default function BriefsPage() {
 
 function BriefCard({ brief, applications, onClose, onEdit, onDelete }: { brief: AgentBrief; applications: Application[]; onClose: () => void; onEdit: () => void; onDelete: () => void }) {
   const appliedCount = applications.length;
+  const shortlistedCount = applications.filter((application) => application.status === "standby" || application.status === "booked").length;
   const bookedCount = applications.filter((application) => application.status === "booked").length;
   const totalLabel = brief.talentNeeded ? `${brief.talentNeeded} ${brief.talentNeeded === 1 ? "role" : "roles"} requested · ${appliedCount} applied` : `${appliedCount} applied`;
   const statusTone = brief.status === "closed" ? "bg-slate-100 text-slate-600" : brief.status === "draft" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700";
@@ -341,7 +350,20 @@ function BriefCard({ brief, applications, onClose, onEdit, onDelete }: { brief: 
         <span className="flex items-center gap-1"><MapPin className="size-4 text-brand-blue" />{brief.location || "Location pending"}</span>
         <span className="flex items-center gap-1"><Clock3 className="size-4 text-brand-blue" />{briefDateLabel(brief)} · {briefCallTimeLabel(brief)}</span>
         <span className="flex items-center gap-1"><UsersRound className="size-4 text-brand-blue" />{totalLabel}</span>
+        <span className="flex items-center gap-1"><Clock3 className="size-4 text-brand-blue" />{shortlistedCount} shortlisted</span>
         <span className="flex items-center gap-1"><CheckCircle2 className="size-4 text-brand-blue" />{bookedCount} booked</span>
+      </div>
+      <div className="mt-5 rounded-2xl border border-brand-silver/70 bg-brand-ice/45 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-bold text-brand-navy">Shortlist and final cast</p>
+            <p className="mt-1 text-sm text-slate-600">Shortlist actors from Applications, then finalize selected bookings when closing this brief.</p>
+          </div>
+          <div className="flex gap-2">
+            <span className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-amber-700 ring-1 ring-amber-100">{shortlistedCount} shortlisted</span>
+            <span className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-emerald-700 ring-1 ring-emerald-100">{bookedCount} selected</span>
+          </div>
+        </div>
       </div>
       {(brief.ageRange || brief.wardrobe || brief.wardrobeImage) && (
         <div className="mt-5 grid gap-3 rounded-2xl bg-brand-ice/55 p-4 md:grid-cols-[1fr_160px]">
@@ -368,7 +390,7 @@ function BriefCard({ brief, applications, onClose, onEdit, onDelete }: { brief: 
         </button>
         {brief.status === "published" && (
           <button type="button" onClick={onClose} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-navy px-4 text-sm font-bold text-white hover:bg-brand-blue">
-            <CheckCircle2 className="size-4" />Close brief
+            <CheckCircle2 className="size-4" />Finalize and close
           </button>
         )}
       </div>
@@ -377,11 +399,31 @@ function BriefCard({ brief, applications, onClose, onEdit, onDelete }: { brief: 
 }
 
 function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: { brief: AgentBrief; applications: Application[]; senderUid: string; onClose: () => void; onDone: (message: string) => void }) {
-  const booked = applications.filter((application) => application.status === "booked");
-  const [message, setMessage] = useState(`You are booked for ${brief.title}. Please join the WhatsApp group for shoot communication.`);
+  const shortlist = useMemo(() => applications.filter((application) => application.status === "standby" || application.status === "booked"), [applications]);
+  const shortlistKey = shortlist.map((application) => application.id).join("|");
+  const [selectedBookingIds, setSelectedBookingIds] = useState<string[]>(shortlist.filter((application) => application.status === "booked").map((application) => application.id));
+  const [actorNames, setActorNames] = useState<Record<string, string>>({});
+  const [message, setMessage] = useState(`Congratulations, you are booked for ${brief.title}. Please join the WhatsApp group for final shoot communication.`);
   const [whatsappLink, setWhatsappLink] = useState("");
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
+  const selectedBookings = shortlist.filter((application) => selectedBookingIds.includes(application.id));
+
+  useEffect(() => {
+    let active = true;
+    void Promise.all(shortlist.map(async (application) => {
+      const snapshot = await getDoc(doc(db, "actors", application.actorUid));
+      const actor = normalizeActorProfile(snapshot.data());
+      return [application.actorUid, actor.stageName || actor.fullName || "Actor"] as const;
+    })).then((entries) => {
+      if (active) setActorNames(Object.fromEntries(entries));
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [shortlist, shortlistKey]);
+
+  function toggleBooking(applicationId: string) {
+    setSelectedBookingIds((current) => current.includes(applicationId) ? current.filter((id) => id !== applicationId) : [...current, applicationId]);
+  }
 
   async function closeBrief(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -389,22 +431,45 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
     setWorking(true);
     setError("");
     try {
-      await updateDoc(doc(db, "briefs", brief.id), {
+      const batch = writeBatch(db);
+      batch.update(doc(db, "briefs", brief.id), {
         status: "closed",
         closeMessage: message.trim(),
         whatsappLink: whatsappLink.trim(),
         closedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      await Promise.all(booked.map((application) => notifyQuietly({
+      selectedBookings.forEach((application) => {
+        const actorName = actorNames[application.actorUid] || "Actor";
+        batch.update(doc(db, "applications", application.id), { status: "booked", decidedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+        batch.set(doc(db, "bookings", application.id), {
+          applicationId: application.id,
+          briefId: application.briefId,
+          actorUid: application.actorUid,
+          agencyId: senderUid,
+          agencyName: brief.agencyName,
+          actorName,
+          briefTitle: brief.title,
+          location: brief.location,
+          shootDate: `${briefDateLabel(brief)} · ${briefCallTimeLabel(brief)}`,
+          shootDateTime: brief.shootDateTime,
+          callTime: briefCallTimeLabel(brief),
+          rate: brief.rate,
+          status: "confirmed",
+          confirmedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      });
+      await batch.commit();
+      await Promise.all(selectedBookings.map((application) => notifyQuietly({
         recipientUid: application.actorUid,
         senderUid,
-        type: "brief_closed",
-        title: `${brief.title} is closed`,
-        body: message.trim(),
-        href: whatsappLink.trim() || "/actor/briefs",
+        type: "booking_confirmed",
+        title: `Final booking details: ${brief.title}`,
+        body: `${message.trim()} ${whatsappLink.trim() ? "Your WhatsApp group link is ready in My Applications." : "Your agency will share any remaining production details directly."}`,
+        href: "/actor/briefs",
       })));
-      onDone(booked.length ? `Brief closed. ${booked.length} booked actor${booked.length === 1 ? "" : "s"} notified.` : "Brief closed. No booked actors were available to notify.");
+      onDone(selectedBookings.length ? `Brief closed. ${selectedBookings.length} booked actor${selectedBookings.length === 1 ? "" : "s"} notified with final details.` : "Brief closed. No booked actors were selected for final notification.");
     } catch {
       setError("We could not close this brief. Please try again.");
     } finally {
@@ -419,25 +484,54 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
           <div>
             <p className="text-sm font-bold tracking-[0.16em] text-brand-blue">CLOSE BRIEF</p>
             <h2 className="mt-1 text-2xl font-bold text-brand-navy">{brief.title}</h2>
-            <p className="mt-2 text-sm text-slate-600">Send one final update to the confirmed cast and move this brief out of the live feed.</p>
+            <p className="mt-2 text-sm text-slate-600">Select the booked actors, add the WhatsApp link, then send the final production update.</p>
           </div>
           <button type="button" onClick={onClose} className="flex size-10 items-center justify-center rounded-full hover:bg-slate-100" aria-label="Close dialog"><X className="size-5" /></button>
         </div>
         <div className="mt-6 grid grid-cols-3 overflow-hidden rounded-2xl border border-brand-silver/70 bg-brand-ice">
           <div className="border-r border-brand-silver/70 p-4">
-            <p className="text-2xl font-bold text-brand-navy">{booked.length}</p>
-            <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Booked</p>
+            <p className="text-2xl font-bold text-brand-navy">{selectedBookings.length}</p>
+            <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Selected</p>
           </div>
           <div className="border-r border-brand-silver/70 p-4">
             <p className="text-2xl font-bold text-brand-navy">{brief.talentNeeded || "Open"}</p>
             <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Roles</p>
           </div>
           <div className="p-4">
-            <p className="text-2xl font-bold text-brand-navy">{applications.length}</p>
-            <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Applied</p>
+            <p className="text-2xl font-bold text-brand-navy">{shortlist.length}</p>
+            <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Shortlist</p>
           </div>
         </div>
         <form onSubmit={closeBrief} className="mt-6 space-y-5">
+          <section className="rounded-2xl border border-brand-silver/70 bg-brand-ice/50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-brand-navy">Final cast checklist</h3>
+                <p className="mt-1 text-sm text-slate-600">Tick the shortlisted actors who are booked for this brief.</p>
+              </div>
+              <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-brand-navy">{selectedBookings.length} booked</span>
+            </div>
+            {shortlist.length ? (
+              <div className="mt-4 space-y-2">
+                {shortlist.map((application) => {
+                  const selected = selectedBookingIds.includes(application.id);
+                  return (
+                    <button key={application.id} type="button" onClick={() => toggleBooking(application.id)} className={`flex w-full items-center justify-between gap-3 rounded-2xl border p-3 text-left transition ${selected ? "border-emerald-200 bg-white shadow-sm" : "border-transparent bg-white/65 hover:bg-white"}`}>
+                      <span>
+                        <span className="block font-bold text-brand-navy">{actorNames[application.actorUid] || "Loading actor..."}</span>
+                        <span className="mt-0.5 block text-xs font-semibold text-slate-500">{application.status === "booked" ? "Already selected" : "Shortlisted"}</span>
+                      </span>
+                      <span className={`flex size-7 items-center justify-center rounded-full border ${selected ? "border-emerald-600 bg-emerald-600 text-white" : "border-slate-300 text-transparent"}`}>
+                        <CheckCircle2 className="size-4" />
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="mt-4 rounded-xl border border-dashed border-brand-silver bg-white p-4 text-sm font-semibold text-slate-500">No shortlisted actors yet. You can still close the brief without sending final booking notifications.</p>
+            )}
+          </section>
           <label className="block">
             <span className="mb-2 block text-sm font-bold text-slate-700">Message to booked actors</span>
             <textarea required rows={5} value={message} onChange={(event) => setMessage(event.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
@@ -463,22 +557,36 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
   );
 }
 
-function DeleteBriefDialog({ brief, applications, onClose, onDone }: { brief: AgentBrief; applications: Application[]; onClose: () => void; onDone: (message: string) => void }) {
+function DeleteBriefDialog({ brief, applications, senderUid, onClose, onDone }: { brief: AgentBrief; applications: Application[]; senderUid: string; onClose: () => void; onDone: (message: string) => void }) {
   const bookedCount = applications.filter((application) => application.status === "booked").length;
+  const [reason, setReason] = useState("");
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
 
   async function deleteBrief() {
+    const finalReason = reason.trim();
+    if (!finalReason) {
+      setError("Please choose or type a reason before deleting this brief.");
+      return;
+    }
     setWorking(true);
     setError("");
     try {
       const bookingSnapshot = await getDocs(query(collection(db, "bookings"), where("agencyId", "==", brief.agencyId), where("briefId", "==", brief.id)));
+      await Promise.all(applications.map((application) => notifyQuietly({
+        recipientUid: application.actorUid,
+        senderUid,
+        type: "brief_deleted",
+        title: `${brief.title} was withdrawn`,
+        body: `${brief.agencyName} deleted this brief. Reason: ${finalReason}`,
+        href: "/actor/briefs",
+      })));
       await Promise.all([
         ...applications.map((application) => deleteDoc(doc(db, "applications", application.id))),
         ...bookingSnapshot.docs.map((booking) => deleteDoc(doc(db, "bookings", booking.id))),
         deleteDoc(doc(db, "briefs", brief.id)),
       ]);
-      onDone(`"${brief.title}" was deleted.`);
+      onDone(`"${brief.title}" was deleted and ${applications.length} applicant${applications.length === 1 ? "" : "s"} notified.`);
     } catch {
       setError("We could not delete this brief. Please try again.");
     } finally {
@@ -493,7 +601,7 @@ function DeleteBriefDialog({ brief, applications, onClose, onDone }: { brief: Ag
           <div>
             <p className="text-sm font-bold tracking-[0.16em] text-red-600">DELETE BRIEF</p>
             <h2 className="mt-1 text-2xl font-bold text-brand-navy">{brief.title}</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">This removes the brief from your board and clears its application records. Booked actors will no longer see this application in their applied list.</p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Give applicants a clear reason before this brief is removed from your board.</p>
           </div>
           <button type="button" onClick={onClose} className="flex size-10 items-center justify-center rounded-full hover:bg-slate-100" aria-label="Close dialog"><X className="size-5" /></button>
         </div>
@@ -510,6 +618,21 @@ function DeleteBriefDialog({ brief, applications, onClose, onDone }: { brief: Ag
             <p className="text-2xl font-bold text-red-700">{brief.status === "closed" ? "Yes" : "No"}</p>
             <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-red-500">Closed</p>
           </div>
+        </div>
+        <div className="mt-6 rounded-2xl border border-brand-silver/70 bg-brand-ice/50 p-4">
+          <p className="text-sm font-bold text-brand-navy">Choose a reason</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {deleteReasons.map((item) => (
+              <button key={item} type="button" onClick={() => setReason(item)} className={`rounded-full px-3 py-1.5 text-xs font-bold ${reason === item ? "bg-brand-navy text-white" : "bg-white text-brand-navy ring-1 ring-brand-silver/70"}`}>
+                {item}
+              </button>
+            ))}
+          </div>
+          <label className="mt-4 block">
+            <span className="mb-2 block text-sm font-bold text-slate-700">Reason for deleting this brief</span>
+            <textarea required rows={4} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Example: The client moved the campaign to a later date, so this brief is being withdrawn for now." className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
+            <p className="mt-2 text-xs font-semibold text-slate-500">This message will be sent to every actor who applied.</p>
+          </label>
         </div>
         {error && <p className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</p>}
         <div className="mt-6 grid grid-cols-2 gap-3">

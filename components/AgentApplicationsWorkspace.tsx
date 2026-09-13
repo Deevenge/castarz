@@ -3,7 +3,7 @@
 import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, writeBatch, where } from "firebase/firestore";
 import Image from "next/image";
 import Link from "next/link";
-import { CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, Download, ExternalLink, LayoutGrid, LoaderCircle, Maximize2, PlaySquare, Search, UserRound, X, XCircle, ZoomIn } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, Download, ExternalLink, LayoutGrid, ListChecks, LoaderCircle, Maximize2, PlaySquare, Search, UserRound, X, XCircle, ZoomIn } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { BookingConfirmDialog } from "@/components/BookingConfirmDialog";
 import { PhotoLightbox } from "@/components/ProfileChrome";
@@ -95,8 +95,8 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
       }
       await batch.commit();
       const messages = {
-        standby: { type: "application_standby" as const, title: "You are on stand-by", body: `${agencyName} placed you on stand-by for ${brief?.title ?? "a brief"}. Stay available.` },
-        booked: { type: "booking_confirmed" as const, title: "Booking confirmed", body: `${agencyName} confirmed your booking for ${brief?.title ?? "a brief"}. Check date, location, and rate on your applications. A final production message with call sheet details, wardrobe updates, or arrival instructions will follow if the agency needs to share more.` },
+        standby: { type: "application_shortlisted" as const, title: "You have been shortlisted", body: `${agencyName} shortlisted you for ${brief?.title ?? "a brief"}. Keep your availability close and stay on the lookout for the final booking update.` },
+        booked: null,
         rejected: { type: "application_rejected" as const, title: "Application update", body: `${agencyName} completed selections for ${brief?.title ?? "a brief"}. Keep your profile ready for the next one.` },
         pending: null,
       };
@@ -114,10 +114,10 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
       setActive((current) => current?.id === application.id ? { ...current, status } : current);
       setApps((current) => current.map((item) => item.id === application.id ? { ...item, status } : item));
       setBookingApp(null);
-      setNotice(status === "booked" ? `${actorName} is booked and the actor has been notified.` : "Application status updated.");
+      setNotice(status === "booked" ? `${actorName} is selected for the final cast. The actor will receive the final booking message when you close the brief.` : status === "standby" ? `${actorName} has been shortlisted and notified.` : "Application status updated.");
     } catch (error) {
       console.error("Unable to update application decision.", error);
-      setNotice(status === "booked" ? "We could not confirm this booking. Please check your connection and published Firestore rules, then try again." : "We could not update this application. Please try again.");
+      setNotice(status === "booked" ? "We could not select this booking. Please check your connection and published Firestore rules, then try again." : "We could not update this application. Please try again.");
     } finally {
       setWorking("");
     }
@@ -137,11 +137,11 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
         <div>
           <p className="text-sm font-bold tracking-[0.18em] text-brand-blue">APPLICATIONS</p>
           <h1 className="mt-1 text-2xl font-bold leading-tight sm:text-3xl">Make the casting call.</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">Open a complete actor dossier, view every portfolio image, then confirm the booking.</p>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">Open a complete actor dossier, shortlist strong matches, then select the final cast before closing the brief.</p>
         </div>
         <div className="grid w-full grid-cols-4 gap-2 rounded-2xl bg-white p-2 shadow-sm ring-1 ring-brand-silver/70 sm:w-auto">
           <MiniStat label="New" value={statusCounts.pending} tone="text-brand-blue" />
-          <MiniStat label="Standby" value={statusCounts.standby} tone="text-amber-600" />
+          <MiniStat label="Shortlist" value={statusCounts.standby} tone="text-amber-600" />
           <MiniStat label="Booked" value={statusCounts.booked} tone="text-emerald-600" />
           <MiniStat label="Rejected" value={statusCounts.rejected} tone="text-red-600" />
         </div>
@@ -167,7 +167,7 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
           <div className="grid grid-cols-5 rounded-2xl bg-brand-ice p-1">
             {(["all", "pending", "standby", "booked", "rejected"] as const).map((status) => (
               <button key={status} type="button" onClick={() => setStatusFilter(status)} className={`min-h-10 rounded-xl px-2 text-xs font-bold capitalize ${statusFilter === status ? "bg-white text-brand-navy shadow-sm" : "text-slate-500"}`}>
-                {status === "pending" ? "New" : status}
+                {status === "pending" ? "New" : status === "standby" ? "Shortlist" : status}
               </button>
             ))}
           </div>
@@ -244,7 +244,7 @@ function ApplicantStoryRail({ applications, actors, open }: { applications: Appl
                     {actor?.headshot ? <Image src={actor.headshot} alt="" width={64} height={64} unoptimized className="size-full object-cover" /> : <UserRound className="size-6" />}
                   </span>
                 </span>
-                <span className="absolute -bottom-1 rounded-full bg-white px-1.5 py-0.5 text-[9px] font-black uppercase text-brand-navy shadow-sm ring-1 ring-brand-silver">{application.status === "pending" ? "New" : application.status}</span>
+                <span className="absolute -bottom-1 rounded-full bg-white px-1.5 py-0.5 text-[9px] font-black uppercase text-brand-navy shadow-sm ring-1 ring-brand-silver">{statusLabel(application.status)}</span>
               </button>
               <p className="mt-2 truncate text-xs font-bold text-brand-navy">{actor?.stageName || actor?.fullName || "Actor"}</p>
               <Link href={`/agent/talent/${application.actorUid}`} className="mt-0.5 block text-[11px] font-bold text-brand-blue">Profile</Link>
@@ -280,6 +280,13 @@ function statusRing(status: Status) {
   if (status === "standby") return "bg-amber-500";
   if (status === "rejected") return "bg-red-500";
   return "bg-brand-blue";
+}
+
+function statusLabel(status: Status) {
+  if (status === "pending") return "New";
+  if (status === "standby") return "Shortlisted";
+  if (status === "booked") return "Selected";
+  return "Rejected";
 }
 
 function ActorDossier({ application, actor, close, working, decide }: { application: Application; actor?: Actor; close: () => void; working: boolean; decide: (app: Application, status: Status) => void }) {
@@ -392,8 +399,8 @@ function ActorDossier({ application, actor, close, working, decide }: { applicat
 
 function DecisionBar({ current, working, decide }: { current: Status; working: boolean; decide: (status: Status) => void }) {
   const actions: Array<{ status: Status; label: string; icon: typeof Clock3; active: string; idle: string }> = [
-    { status: "standby", label: "Stand by", icon: Clock3, active: "bg-amber-500 text-white ring-4 ring-amber-100", idle: "bg-amber-100 text-amber-800" },
-    { status: "booked", label: current === "booked" ? "Booking confirmed" : "Book actor", icon: CheckCircle2, active: "bg-emerald-600 text-white ring-4 ring-emerald-100", idle: "bg-emerald-600 text-white" },
+    { status: "standby", label: "Shortlist", icon: ListChecks, active: "bg-amber-500 text-white ring-4 ring-amber-100", idle: "bg-amber-100 text-amber-800" },
+    { status: "booked", label: current === "booked" ? "Selected" : "Select booking", icon: CheckCircle2, active: "bg-emerald-600 text-white ring-4 ring-emerald-100", idle: "bg-emerald-600 text-white" },
     { status: "rejected", label: "Reject", icon: XCircle, active: "bg-red-600 text-white ring-4 ring-red-100", idle: "bg-red-50 text-red-700" },
   ];
   return (
@@ -401,7 +408,7 @@ function DecisionBar({ current, working, decide }: { current: Status; working: b
       {actions.map(({ status, label, icon: Icon, active, idle }) => (
         <button key={status} disabled={working || (status === "booked" && current === "booked")} onClick={() => decide(status)} className={`flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold transition-all duration-300 disabled:opacity-50 ${current === status ? active : idle}`}>
           {working ? <LoaderCircle className="size-4 animate-spin" /> : <Icon className="size-4" />}
-          {current === status && status !== "booked" ? `${label} selected` : label}
+          {current === status && status === "standby" ? "Shortlisted" : current === status && status === "rejected" ? "Rejected" : label}
         </button>
       ))}
     </div>
@@ -430,7 +437,7 @@ function Avatar({ actor }: { actor?: Actor }) {
 
 function StatusBadge({ status }: { status: Status }) {
   const tone = status === "booked" ? "bg-emerald-50 text-emerald-700" : status === "rejected" ? "bg-red-50 text-red-700" : status === "standby" ? "bg-amber-50 text-amber-700" : "bg-brand-ice text-brand-navy";
-  return <span className={`rounded-full px-2 py-1 text-xs font-bold ${tone}`}>{status === "pending" ? "Under review" : status === "booked" ? "Booked" : status}</span>;
+  return <span className={`rounded-full px-2 py-1 text-xs font-bold ${tone}`}>{status === "pending" ? "Under review" : statusLabel(status)}</span>;
 }
 
 async function loadActor(uid: string): Promise<Actor> {
