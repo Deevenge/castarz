@@ -225,7 +225,21 @@ service cloud.firestore {
         && unchanged('actorUid')
         && unchanged('briefId')
         && request.resource.data.status in ['confirmed', 'cancelled']
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt', 'cancelledAt']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'applicationId',
+          'agencyName',
+          'actorName',
+          'briefTitle',
+          'location',
+          'shootDate',
+          'shootDateTime',
+          'callTime',
+          'rate',
+          'status',
+          'confirmedAt',
+          'updatedAt',
+          'cancelledAt'
+        ]);
       allow delete: if isAgent()
         && resource.data.agencyId == request.auth.uid;
     }

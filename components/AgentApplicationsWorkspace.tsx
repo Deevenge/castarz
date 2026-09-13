@@ -1,6 +1,6 @@
 "use client";
 
-import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, writeBatch, where } from "firebase/firestore";
 import Image from "next/image";
 import Link from "next/link";
 import { CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, Download, ExternalLink, LayoutGrid, LoaderCircle, Maximize2, PlaySquare, Search, UserRound, X, XCircle, ZoomIn } from "lucide-react";
@@ -29,6 +29,7 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
   const [selectedBriefId, setSelectedBriefId] = useState("all");
   const [statusFilter, setStatusFilter] = useState<Status | "all">("all");
   const [search, setSearch] = useState("");
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     if (!user) return;
@@ -68,10 +69,13 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
     const actor = actors[application.actorUid];
     const actorName = actor?.stageName || actor?.fullName || "Actor";
     setWorking(application.id);
+    setNotice("");
     try {
-      await updateDoc(doc(db, "applications", application.id), { status, decidedAt: serverTimestamp() });
+      const batch = writeBatch(db);
+      const applicationRef = doc(db, "applications", application.id);
+      batch.update(applicationRef, { status, decidedAt: serverTimestamp(), updatedAt: serverTimestamp() });
       if (status === "booked") {
-        await setDoc(doc(db, "bookings", application.id), {
+        batch.set(doc(db, "bookings", application.id), {
           applicationId: application.id,
           briefId: application.briefId,
           actorUid: application.actorUid,
@@ -86,8 +90,10 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
           rate: brief?.rate ?? "",
           status: "confirmed",
           confirmedAt: serverTimestamp(),
-        });
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
       }
+      await batch.commit();
       const messages = {
         standby: { type: "application_standby" as const, title: "You are on stand-by", body: `${agencyName} placed you on stand-by for ${brief?.title ?? "a brief"}. Stay available.` },
         booked: { type: "booking_confirmed" as const, title: "Booking confirmed", body: `${agencyName} confirmed your booking for ${brief?.title ?? "a brief"}. Check date, location, and rate on your applications. A final production message with call sheet details, wardrobe updates, or arrival instructions will follow if the agency needs to share more.` },
@@ -106,7 +112,12 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
         });
       }
       setActive((current) => current?.id === application.id ? { ...current, status } : current);
+      setApps((current) => current.map((item) => item.id === application.id ? { ...item, status } : item));
       setBookingApp(null);
+      setNotice(status === "booked" ? `${actorName} is booked and the actor has been notified.` : "Application status updated.");
+    } catch (error) {
+      console.error("Unable to update application decision.", error);
+      setNotice(status === "booked" ? "We could not confirm this booking. Please check your connection and published Firestore rules, then try again." : "We could not update this application. Please try again.");
     } finally {
       setWorking("");
     }
@@ -135,6 +146,8 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
           <MiniStat label="Rejected" value={statusCounts.rejected} tone="text-red-600" />
         </div>
       </header>}
+
+      {notice && <p className="mt-5 rounded-2xl bg-brand-ice px-4 py-3 text-sm font-bold text-brand-navy">{notice}</p>}
 
       <section className="mt-7 rounded-[28px] bg-white p-4 shadow-sm ring-1 ring-brand-silver/70 sm:p-5">
         <div className="flex gap-2 overflow-x-auto pb-1">
