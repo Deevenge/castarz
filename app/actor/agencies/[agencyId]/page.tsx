@@ -2,12 +2,13 @@
 
 import { collection, doc, onSnapshot, query, serverTimestamp, setDoc, where } from "firebase/firestore";
 import { Check, CheckCircle2, Clock3, LoaderCircle, MapPin, Send, UserMinus, WalletCards } from "lucide-react";
+import Image from "next/image";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { AgencyHeroCard, LoadingScreen, ProfileTabs } from "@/components/ProfileChrome";
 import { StartChatButton } from "@/components/StartChatButton";
 import { useAuth } from "@/context/AuthContext";
-import { briefFromDocument, type AgentBrief } from "@/lib/agent-data";
+import { briefCallTimeLabel, briefDateLabel, briefFromDocument, type AgentBrief } from "@/lib/agent-data";
 import { requestAgencyConnection, withdrawAgencyConnection, type ConnectionStatus } from "@/lib/connections";
 import { directoryAgencyFromData, type DirectoryAgency } from "@/lib/directory";
 import { db } from "@/lib/firebase";
@@ -215,12 +216,21 @@ export default function AgencyPublicPage() {
                   <h3 className="text-lg font-bold text-brand-navy">{brief.title}</h3>
                   {brief.visibility === "network" && <span className="rounded-full bg-brand-navy px-2 py-0.5 text-[11px] font-bold text-brand-cyan">Network</span>}
                 </div>
-                <p className="mt-2 text-sm leading-6 text-slate-600">{brief.description}</p>
+                {brief.description && <p className="mt-2 text-sm leading-6 text-slate-600">{brief.description}</p>}
                 <div className="mt-4 flex flex-wrap gap-4 text-sm font-semibold text-slate-600">
                   <span className="flex items-center gap-1"><MapPin className="size-4 text-brand-blue" />{brief.location || "Location pending"}</span>
                   <span className="flex items-center gap-1"><WalletCards className="size-4 text-brand-blue" />{brief.rate || "Rate pending"}</span>
-                  <span className="flex items-center gap-1"><Clock3 className="size-4 text-brand-blue" />{brief.shootDate || "Date pending"}</span>
+                  <span className="flex items-center gap-1"><Clock3 className="size-4 text-brand-blue" />{briefDateLabel(brief)} · {briefCallTimeLabel(brief)}</span>
                 </div>
+                {(brief.ageRange || brief.wardrobe || brief.wardrobeImage) && (
+                  <div className="mt-4 grid gap-3 rounded-2xl bg-brand-ice/60 p-4 md:grid-cols-[1fr_150px]">
+                    <div className="space-y-3">
+                      {brief.ageRange && <InfoTile label="Age range" value={brief.ageRange} />}
+                      {brief.wardrobe && <InfoTile label="Wardrobe" value={brief.wardrobe} />}
+                    </div>
+                    {brief.wardrobeImage && <div className="relative aspect-video overflow-hidden rounded-2xl bg-white"><Image src={brief.wardrobeImage} alt="Wardrobe reference" fill unoptimized className="object-cover" /></div>}
+                  </div>
+                )}
                 <button type="button" disabled={applied || loading} onClick={() => void apply(brief)} className={`mt-4 flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold ${applied ? "bg-emerald-50 text-emerald-700" : "bg-brand-blue text-white"}`}>
                   {loading ? <LoaderCircle className="size-4 animate-spin" /> : applied ? <CheckCircle2 className="size-4" /> : <Send className="size-4" />}
                   {applied ? "Applied" : loading ? "Applying…" : "Apply now"}

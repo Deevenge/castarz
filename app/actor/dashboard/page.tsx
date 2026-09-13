@@ -1,13 +1,14 @@
 "use client";
 
 import { collection, doc, onSnapshot, query, serverTimestamp, setDoc, where } from "firebase/firestore";
+import Image from "next/image";
 import Link from "next/link";
 import { Bell, BriefcaseBusiness, Building2, CheckCircle2, Clock3, Grid3X3, LoaderCircle, MapPin, Send, Sparkles, UsersRound, WalletCards } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { SocialPostComposer } from "@/components/SocialPostComposer";
 import { SocialPostGrid } from "@/components/SocialPostGrid";
 import { useAuth } from "@/context/AuthContext";
-import { briefFromDocument, type AgentBrief } from "@/lib/agent-data";
+import { briefCallTimeLabel, briefDateLabel, briefFromDocument, type AgentBrief } from "@/lib/agent-data";
 import { normalizeActorProfile } from "@/lib/actor-profile";
 import { db } from "@/lib/firebase";
 import { notifyQuietly } from "@/lib/notify";
@@ -181,5 +182,48 @@ function TabButton({ active, icon: Icon, label, onClick }: { active: boolean; ic
 }
 
 function BriefCard({ brief, accent, applied, loading, onApply }: { brief: AgentBrief; accent: string; applied: boolean; loading: boolean; onApply: () => void }) {
-  return <article className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-brand-silver/70"><div className={`h-1.5 ${accent}`} /><div className="p-5 sm:p-6"><div className="flex gap-3"><div className={`flex size-11 shrink-0 items-center justify-center rounded-2xl ${accent} text-sm font-extrabold text-white`}>{brief.agencyName.slice(0, 2).toUpperCase()}</div><div><Link href={`/actor/agencies/${brief.agencyId}`} className="font-bold text-brand-navy hover:text-brand-blue">{brief.agencyName}</Link><p className="mt-1 flex items-center gap-1 text-sm text-slate-500"><MapPin className="size-3.5" />{brief.location || "Location pending"}</p></div></div><h3 className="mt-5 text-xl font-bold text-brand-navy">{brief.title}</h3><p className="mt-2 text-sm leading-6 text-slate-600">{brief.description}</p><div className="mt-4 flex flex-wrap gap-2">{brief.requirements.map((tag) => <span key={tag} className="rounded-full bg-brand-ice px-3 py-1.5 text-xs font-bold text-brand-navy">{tag}</span>)}</div><div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 pt-4"><div className="flex gap-4 text-sm font-semibold text-slate-600"><span className="flex items-center gap-1"><WalletCards className="size-4 text-brand-blue" />{brief.rate || "Rate pending"}</span><span className="flex items-center gap-1"><Clock3 className="size-4 text-brand-blue" />{brief.shootDate || "Date pending"}</span></div><button type="button" onClick={onApply} disabled={applied || loading} className={`flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold ${applied ? "bg-emerald-50 text-emerald-700" : "bg-brand-blue text-white hover:bg-brand-navy"}`}>{loading ? <LoaderCircle className="size-4 animate-spin" /> : applied ? <CheckCircle2 className="size-4" /> : <Send className="size-4" />}{applied ? "Applied" : loading ? "Applying..." : "Apply now"}</button></div></div></article>;
+  const ageTags = brief.ageRange ? [brief.ageRange] : brief.requirements;
+
+  return (
+    <article className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-brand-silver/70">
+      <div className={`h-1.5 ${accent}`} />
+      <div className="p-5 sm:p-6">
+        <div className="flex gap-3">
+          <div className={`flex size-11 shrink-0 items-center justify-center rounded-2xl ${accent} text-sm font-extrabold text-white`}>{brief.agencyName.slice(0, 2).toUpperCase()}</div>
+          <div>
+            <Link href={`/actor/agencies/${brief.agencyId}`} className="font-bold text-brand-navy hover:text-brand-blue">{brief.agencyName}</Link>
+            <p className="mt-1 flex items-center gap-1 text-sm text-slate-500"><MapPin className="size-3.5" />{brief.location || "Location pending"}</p>
+          </div>
+        </div>
+        <h3 className="mt-5 text-xl font-bold text-brand-navy">{brief.title}</h3>
+        {brief.description && <p className="mt-2 text-sm leading-6 text-slate-600">{brief.description}</p>}
+        {!!ageTags.length && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {ageTags.map((tag) => <span key={tag} className="rounded-full bg-brand-ice px-3 py-1.5 text-xs font-bold text-brand-navy">{tag}</span>)}
+          </div>
+        )}
+        {(brief.wardrobe || brief.wardrobeImage) && (
+          <div className="mt-4 grid gap-3 rounded-2xl bg-brand-ice/60 p-3 sm:grid-cols-[1fr_130px]">
+            {brief.wardrobe && (
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-blue">Wardrobe</p>
+                <p className="mt-1 text-sm font-semibold leading-6 text-brand-navy">{brief.wardrobe}</p>
+              </div>
+            )}
+            {brief.wardrobeImage && <div className="relative aspect-video overflow-hidden rounded-xl bg-white"><Image src={brief.wardrobeImage} alt="Wardrobe reference" fill unoptimized className="object-cover" /></div>}
+          </div>
+        )}
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 pt-4">
+          <div className="flex gap-4 text-sm font-semibold text-slate-600">
+            <span className="flex items-center gap-1"><WalletCards className="size-4 text-brand-blue" />{brief.rate || "Rate pending"}</span>
+            <span className="flex items-center gap-1"><Clock3 className="size-4 text-brand-blue" />{briefDateLabel(brief)} · {briefCallTimeLabel(brief)}</span>
+          </div>
+          <button type="button" onClick={onApply} disabled={applied || loading} className={`flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold ${applied ? "bg-emerald-50 text-emerald-700" : "bg-brand-blue text-white hover:bg-brand-navy"}`}>
+            {loading ? <LoaderCircle className="size-4 animate-spin" /> : applied ? <CheckCircle2 className="size-4" /> : <Send className="size-4" />}
+            {applied ? "Applied" : loading ? "Applying..." : "Apply now"}
+          </button>
+        </div>
+      </div>
+    </article>
+  );
 }

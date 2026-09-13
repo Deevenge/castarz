@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BookingConfirmDialog } from "@/components/BookingConfirmDialog";
 import { PhotoLightbox } from "@/components/ProfileChrome";
 import { useAuth } from "@/context/AuthContext";
-import { briefFromDocument, type AgentBrief } from "@/lib/agent-data";
+import { briefCallTimeLabel, briefDateLabel, briefFromDocument, type AgentBrief } from "@/lib/agent-data";
 import { db } from "@/lib/firebase";
 import { notifyQuietly } from "@/lib/notify";
 import { albumCategories, normalizeActorProfile, type ActorCredit, type AlbumCategory } from "@/lib/actor-profile";
@@ -80,7 +80,9 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
           actorName,
           briefTitle: brief?.title ?? "Casting brief",
           location: brief?.location ?? "",
-          shootDate: brief?.shootDate ?? "",
+          shootDate: brief ? `${briefDateLabel(brief)} · ${briefCallTimeLabel(brief)}` : "",
+          shootDateTime: brief?.shootDateTime ?? "",
+          callTime: brief ? briefCallTimeLabel(brief) : "",
           rate: brief?.rate ?? "",
           status: "confirmed",
           confirmedAt: serverTimestamp(),
@@ -195,7 +197,7 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
           headshot={bookingActor?.headshot}
           briefTitle={bookingBrief?.title || "Casting brief"}
           location={bookingBrief?.location || ""}
-          shootDate={bookingBrief?.shootDate || ""}
+          shootDate={bookingBrief ? `${briefDateLabel(bookingBrief)} · ${briefCallTimeLabel(bookingBrief)}` : ""}
           rate={bookingBrief?.rate || ""}
           working={working === bookingApp.id}
           onClose={() => setBookingApp(null)}

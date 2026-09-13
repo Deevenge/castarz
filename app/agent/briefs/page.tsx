@@ -1,11 +1,13 @@
 "use client";
 
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
-import { CheckCircle2, Clock3, Edit3, Globe2, LoaderCircle, LockKeyhole, MapPin, MessageCircle, Plus, Send, Trash2, UsersRound, X } from "lucide-react";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import { CheckCircle2, Clock3, Edit3, Globe2, ImagePlus, LoaderCircle, LockKeyhole, MapPin, MessageCircle, Plus, Send, Trash2, UsersRound, X } from "lucide-react";
+import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from "react";
 import { AgentApplicationsWorkspace } from "@/components/AgentApplicationsWorkspace";
 import { useAuth } from "@/context/AuthContext";
-import { briefFromDocument, type AgentBrief, type BriefStatus, type BriefVisibility } from "@/lib/agent-data";
+import { briefCallTimeLabel, briefDateLabel, briefFromDocument, callTimeFromDateTime, type AgentBrief, type BriefStatus, type BriefVisibility } from "@/lib/agent-data";
+import { compressImageToDataUrl } from "@/lib/actor-profile";
 import { db } from "@/lib/firebase";
 import { notifyQuietly } from "@/lib/notify";
 
@@ -16,7 +18,9 @@ type BriefForm = {
   rate: string;
   shootDate: string;
   description: string;
-  requirements: string;
+  ageRange: string;
+  wardrobe: string;
+  wardrobeImage: string;
   talentNeeded: string;
   status: BriefStatus;
   visibility: BriefVisibility;
@@ -36,7 +40,9 @@ const blank: BriefForm = {
   rate: "",
   shootDate: "",
   description: "",
-  requirements: "",
+  ageRange: "",
+  wardrobe: "",
+  wardrobeImage: "",
   talentNeeded: "",
   status: "published",
   visibility: "public",
@@ -97,7 +103,12 @@ export default function BriefsPage() {
         talentNeeded,
         agencyId: user.uid,
         agencyName,
-        requirements: form.requirements.split(",").map((item) => item.trim()).filter(Boolean),
+        shootDateTime: form.shootDate,
+        callTime: callTimeFromDateTime(form.shootDate),
+        ageRange: form.ageRange.trim(),
+        wardrobe: form.wardrobe.trim(),
+        wardrobeImage: form.wardrobeImage,
+        requirements: form.ageRange.split(",").map((item) => item.trim()).filter(Boolean),
         updatedAt: serverTimestamp(),
       };
       if (editingBrief) await updateDoc(doc(db, "briefs", editingBrief.id), payload);
@@ -130,9 +141,11 @@ export default function BriefsPage() {
       production: brief.production,
       location: brief.location,
       rate: brief.rate,
-      shootDate: brief.shootDate,
+      shootDate: brief.shootDateTime || (brief.shootDate.includes("T") ? brief.shootDate : ""),
       description: brief.description,
-      requirements: brief.requirements.join(", "),
+      ageRange: brief.ageRange || brief.requirements.join(", "),
+      wardrobe: brief.wardrobe,
+      wardrobeImage: brief.wardrobeImage,
       talentNeeded: brief.talentNeeded ? String(brief.talentNeeded) : "",
       status: brief.status,
       visibility: brief.visibility,
@@ -145,6 +158,19 @@ export default function BriefsPage() {
     setOpen(false);
     setEditingBrief(null);
     setForm(blank);
+  }
+
+  async function uploadWardrobeImage(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const wardrobeImage = await compressImageToDataUrl(file);
+      updateForm("wardrobeImage", wardrobeImage);
+    } catch {
+      setNotice("We could not attach that wardrobe reference. Please try another image.");
+    } finally {
+      event.target.value = "";
+    }
   }
 
   return (
@@ -181,16 +207,48 @@ export default function BriefsPage() {
             <button onClick={closeForm} className="flex size-10 items-center justify-center rounded-full hover:bg-slate-100" aria-label="Close form"><X className="size-5" /></button>
           </div>
           <form onSubmit={saveBrief} className="mt-6 grid gap-5 sm:grid-cols-2">
-            <Input label="Brief title" value={form.title} set={(title) => updateForm("title", title)} required />
-            <Input label="Production" value={form.production} set={(production) => updateForm("production", production)} />
-            <Input label="Location" value={form.location} set={(location) => updateForm("location", location)} />
-            <Input label="Pay rate" value={form.rate} set={(rate) => updateForm("rate", rate)} />
-            <Input label="Shoot date" value={form.shootDate} set={(shootDate) => updateForm("shootDate", shootDate)} />
-            <Input label="Actors needed" value={form.talentNeeded} set={(talentNeeded) => updateForm("talentNeeded", talentNeeded)} type="number" min="1" placeholder="e.g. 12" />
-            <Input label="Requirements" value={form.requirements} set={(requirements) => updateForm("requirements", requirements)} placeholder="Separate tags with commas" className="sm:col-span-2" />
+            <Input label="Brief title" value={form.title} set={(title) => updateForm("title", title)} placeholder="e.g. Featured extras for a premium fashion commercial" help="Use a clear casting headline actors can understand at a glance." required />
+            <Input label="Production" value={form.production} set={(production) => updateForm("production", production)} placeholder="e.g. SABC drama, Netflix series, TV commercial, music video" help="Name the show, campaign, client, or production type." />
+            <Input label="Location" value={form.location} set={(location) => updateForm("location", location)} placeholder="e.g. Johannesburg CBD, Cape Town studio, Durban beachfront" help="Add the city and any useful area or set location detail." />
+            <Input label="Pay rate" value={form.rate} set={(rate) => updateForm("rate", rate)} placeholder="e.g. R1,500 day rate plus usage, or TBC" help="Be specific about rate, usage, overtime, or whether payment is still to be confirmed." />
+            <div>
+              <Input label="Shoot date and call time" value={form.shootDate} set={(shootDate) => updateForm("shootDate", shootDate)} type="datetime-local" help="Pick the shoot date and call time. CASTARZ will use this later for booking reports and schedules." />
+              {form.shootDate && <p className="mt-2 rounded-xl bg-brand-ice px-3 py-2 text-xs font-bold text-brand-navy">Generated call time: {callTimeFromDateTime(form.shootDate) || "Pick a time"}</p>}
+            </div>
+            <Input label="Actors needed" value={form.talentNeeded} set={(talentNeeded) => updateForm("talentNeeded", talentNeeded)} type="number" min="1" placeholder="e.g. 12" help="How many performers, extras, or featured actors you need for this brief." />
+            <Input label="Age range" value={form.ageRange} set={(ageRange) => updateForm("ageRange", ageRange)} placeholder="e.g. 18-25, 30-45, or families with kids aged 6-12" help="Describe the playable age range or demographic the production is looking for." className="sm:col-span-2" />
+            <div className="grid gap-4 sm:col-span-2 lg:grid-cols-[1fr_190px]">
+              <label>
+                <span className="mb-2 block text-sm font-bold text-slate-700">Wardrobe</span>
+                <textarea rows={4} value={form.wardrobe} onChange={(event) => updateForm("wardrobe", event.target.value)} placeholder="e.g. Smart casual neutrals, no visible logos, bring black shoes and one formal option." className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
+                <p className="mt-2 text-xs font-semibold text-slate-500">Add clothing direction, colors, styling restrictions, or items actors should bring to set.</p>
+              </label>
+              <div>
+                <span className="mb-2 block text-sm font-bold text-slate-700">Wardrobe reference</span>
+                <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-2xl border border-brand-silver/70 bg-brand-ice">
+                  {form.wardrobeImage ? (
+                    <Image src={form.wardrobeImage} alt="Wardrobe reference" fill unoptimized className="object-cover" />
+                  ) : (
+                    <div className="px-4 text-center">
+                      <ImagePlus className="mx-auto size-6 text-brand-blue" />
+                      <p className="mt-2 text-xs font-bold text-slate-500">Optional style image</p>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <label className="inline-flex min-h-10 flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl bg-brand-navy px-3 text-sm font-bold text-white">
+                    <ImagePlus className="size-4" />Upload
+                    <input type="file" accept="image/*" onChange={(event) => void uploadWardrobeImage(event)} className="sr-only" />
+                  </label>
+                  {form.wardrobeImage && <button type="button" onClick={() => updateForm("wardrobeImage", "")} className="flex size-10 items-center justify-center rounded-xl bg-red-50 text-red-700" aria-label="Remove wardrobe reference"><X className="size-4" /></button>}
+                </div>
+                <p className="mt-2 text-xs font-semibold text-slate-500">Upload a mood, outfit, or color reference if it helps actors prepare.</p>
+              </div>
+            </div>
             <label className="sm:col-span-2">
-              <span className="mb-2 block text-sm font-bold text-slate-700">Brief description</span>
-              <textarea required rows={4} value={form.description} onChange={(event) => updateForm("description", event.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
+              <span className="mb-2 block text-sm font-bold text-slate-700">Brief description <span className="font-semibold text-slate-400">(optional)</span></span>
+              <textarea rows={4} value={form.description} onChange={(event) => updateForm("description", event.target.value)} placeholder="Add story context, character notes, usage, call time expectations, callback details, or anything that helps actors decide if they fit." className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
+              <p className="mt-2 text-xs font-semibold text-slate-500">Optional, but useful for giving actors a premium, professional brief experience.</p>
             </label>
             <fieldset className="sm:col-span-2">
               <legend className="mb-3 text-sm font-bold text-slate-700">Who can apply?</legend>
@@ -279,9 +337,18 @@ function BriefCard({ brief, applications, onClose, onEdit, onDelete }: { brief: 
       </div>
       <div className="mt-5 flex flex-wrap gap-4 text-sm font-semibold text-slate-600">
         <span className="flex items-center gap-1"><MapPin className="size-4 text-brand-blue" />{brief.location || "Location pending"}</span>
-        <span className="flex items-center gap-1"><Clock3 className="size-4 text-brand-blue" />{brief.shootDate || "Date pending"}</span>
+        <span className="flex items-center gap-1"><Clock3 className="size-4 text-brand-blue" />{briefDateLabel(brief)} · {briefCallTimeLabel(brief)}</span>
         <span className="flex items-center gap-1"><UsersRound className="size-4 text-brand-blue" />{totalLabel}</span>
       </div>
+      {(brief.ageRange || brief.wardrobe || brief.wardrobeImage) && (
+        <div className="mt-5 grid gap-3 rounded-2xl bg-brand-ice/55 p-4 md:grid-cols-[1fr_160px]">
+          <div className="space-y-3">
+            {brief.ageRange && <BriefDetail label="Age range" value={brief.ageRange} />}
+            {brief.wardrobe && <BriefDetail label="Wardrobe" value={brief.wardrobe} />}
+          </div>
+          {brief.wardrobeImage && <div className="relative aspect-video overflow-hidden rounded-2xl bg-white"><Image src={brief.wardrobeImage} alt="Wardrobe reference" fill unoptimized className="object-cover" /></div>}
+        </div>
+      )}
       {brief.status === "closed" && (
         <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
           <p className="font-bold text-brand-navy">Final cast update sent to booked actors.</p>
@@ -455,11 +522,21 @@ function DeleteBriefDialog({ brief, applications, onClose, onDone }: { brief: Ag
   );
 }
 
-function Input({ label, value, set, required, placeholder, type, min, className = "" }: { label: string; value: string; set: (value: string) => void; required?: boolean; placeholder?: string; type?: string; min?: string; className?: string }) {
+function BriefDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-blue">{label}</p>
+      <p className="mt-1 text-sm font-semibold leading-6 text-brand-navy">{value}</p>
+    </div>
+  );
+}
+
+function Input({ label, value, set, required, placeholder, help, type, min, className = "" }: { label: string; value: string; set: (value: string) => void; required?: boolean; placeholder?: string; help: string; type?: string; min?: string; className?: string }) {
   return (
     <label className={className}>
       <span className="mb-2 block text-sm font-bold text-slate-700">{label}</span>
       <input required={required} value={value} placeholder={placeholder} type={type ?? "text"} min={min} onChange={(event) => set(event.target.value)} className="min-h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
+      <p className="mt-2 text-xs font-semibold text-slate-500">{help}</p>
     </label>
   );
 }
