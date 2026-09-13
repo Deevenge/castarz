@@ -1,7 +1,7 @@
 "use client";
 
 import { doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
-import { Camera, LoaderCircle, LogOut, PencilLine } from "lucide-react";
+import { Camera, ImagePlus, LoaderCircle, LogOut, PencilLine } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -18,6 +18,7 @@ export default function ActorAccountLayout({ children }: { children: ReactNode }
   const { user, signOut } = useAuth();
   const [actor, setActor] = useState<ActorProfile>(emptyActorProfile);
   const [uploading, setUploading] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -39,6 +40,19 @@ export default function ActorAccountLayout({ children }: { children: ReactNode }
     }
   }
 
+  async function uploadBanner(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file || !user) return;
+    setUploadingBanner(true);
+    try {
+      const banner = await compressImageToDataUrl(file);
+      await setDoc(doc(db, "actors", user.uid), { banner, updatedAt: serverTimestamp() }, { merge: true });
+    } finally {
+      setUploadingBanner(false);
+      event.target.value = "";
+    }
+  }
+
   async function handleSignOut() {
     await signOut();
     router.replace("/auth");
@@ -51,9 +65,14 @@ export default function ActorAccountLayout({ children }: { children: ReactNode }
   return (
     <div className="mx-auto max-w-3xl">
       <section className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-brand-silver/70">
-        <div className="relative h-44 bg-gradient-to-br from-brand-navy via-brand-blue to-[#8eb0ff] sm:h-52">
-          {cover ? <Image src={cover} alt="" fill unoptimized className="object-contain object-top" /> : null}
+        <div className="relative h-44 overflow-hidden bg-gradient-to-br from-brand-navy via-brand-blue to-[#8eb0ff] sm:h-52">
+          {cover ? <Image src={cover} alt="" fill unoptimized className="object-cover object-center" /> : null}
           <div className="absolute inset-0 bg-gradient-to-t from-brand-navy/50 via-transparent to-black/10" />
+          <label className="absolute bottom-4 right-4 z-10 inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl bg-white/90 px-3 text-sm font-bold text-brand-navy shadow-sm backdrop-blur hover:bg-white">
+            {uploadingBanner ? <LoaderCircle className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
+            Banner
+            <input type="file" accept="image/*" onChange={(event) => void uploadBanner(event)} className="sr-only" />
+          </label>
         </div>
         <div className="px-4 sm:px-6">
           <div className="relative -mt-14 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">

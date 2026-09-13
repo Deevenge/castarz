@@ -9,8 +9,8 @@ import { actorCover, actorDisplayName, type DirectoryActor } from "@/lib/directo
 
 export function ProfileCover({ src, alt }: { src: string; alt: string }) {
   return (
-    <div className="relative h-44 overflow-hidden bg-gradient-to-br from-brand-navy via-brand-blue to-[#8eb0ff] sm:h-56">
-      {src ? <Image src={src} alt={alt} fill unoptimized className="object-contain object-top" /> : null}
+    <div className="relative h-44 overflow-hidden bg-gradient-to-br from-brand-navy via-[#2857df] to-[#7ea2ff] sm:h-56">
+      {src ? <Image src={src} alt={alt} fill unoptimized className="object-cover object-center" /> : null}
       <div className="absolute inset-0 bg-gradient-to-t from-brand-navy/55 via-brand-navy/10 to-transparent" />
     </div>
   );
@@ -170,6 +170,7 @@ export function AgencyHeroCard({
   name,
   username,
   photo,
+  banner,
   backHref,
   actions,
   footer,
@@ -177,13 +178,19 @@ export function AgencyHeroCard({
   name: string;
   username?: string;
   photo?: string;
+  banner?: string;
   backHref?: string;
   actions?: ReactNode;
   footer?: ReactNode;
 }) {
+  const [viewerOpen, setViewerOpen] = useState(false);
+
   return (
     <section className="relative overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-brand-silver/70">
-      <div className="h-44 bg-gradient-to-br from-brand-navy via-[#12305f] to-brand-blue sm:h-52" />
+      <div className="relative h-44 overflow-hidden bg-gradient-to-br from-brand-navy via-[#12305f] to-brand-blue sm:h-52">
+        {banner ? <Image src={banner} alt="" fill unoptimized className="object-cover object-center" /> : null}
+        <div className="absolute inset-0 bg-gradient-to-t from-brand-navy/60 via-transparent to-white/10" />
+      </div>
       {backHref && (
         <Link href={backHref} className="absolute left-3 top-3 z-10 inline-flex min-h-10 items-center gap-1 rounded-full bg-white/90 px-3 text-sm font-bold text-brand-navy shadow-sm">
           <ChevronLeft className="size-4" />Back
@@ -193,7 +200,11 @@ export function AgencyHeroCard({
         <div className="relative -mt-14 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex items-end gap-3">
             <div className="relative flex size-28 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-navy text-2xl font-extrabold text-brand-cyan ring-4 ring-white sm:size-32">
-              {photo ? <Image src={photo} alt={name} fill unoptimized className="object-cover" /> : name.slice(0, 2).toUpperCase()}
+              {photo ? (
+                <button type="button" onClick={() => setViewerOpen(true)} className="absolute inset-0 cursor-zoom-in" aria-label={`View ${name} profile photo`}>
+                  <Image src={photo} alt={name} fill unoptimized className="object-cover" />
+                </button>
+              ) : name.slice(0, 2).toUpperCase()}
             </div>
             <div className="min-w-0 pb-1">
               <h1 className="truncate text-2xl font-bold tracking-tight text-brand-navy">{name}</h1>
@@ -204,6 +215,7 @@ export function AgencyHeroCard({
         </div>
         {footer}
       </div>
+      {photo && viewerOpen && <PhotoLightbox photo={photo} label={`${name} profile photo`} close={() => setViewerOpen(false)} />}
     </section>
   );
 }

@@ -108,10 +108,38 @@ export default function TalentProfilePage() {
       />
       {tab === "about" && (
         <section className="rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-brand-silver/70 sm:p-6">
-          <h2 className="text-lg font-bold">About</h2>
-          <p className="mt-2 leading-7 text-slate-600">{actor.bio || "This actor has not added a bio yet."}</p>
-          <div className="mt-4"><SpecChips actor={actor} /></div>
-          {actor.availabilityNote && <p className="mt-4 text-sm text-slate-500">{actor.availabilityNote}</p>}
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-blue">Actor z-card</p>
+              <h2 className="mt-1 text-xl font-bold text-brand-navy">About</h2>
+            </div>
+            <span className="rounded-full bg-brand-ice px-3 py-1.5 text-xs font-black uppercase tracking-[0.12em] text-brand-navy">{actor.representationStatus}</span>
+          </div>
+          <p className="mt-4 leading-7 text-slate-600">{actor.bio || "This actor has not added a bio yet."}</p>
+          <div className="mt-5"><SpecChips actor={actor} /></div>
+          {actor.availabilityNote && <p className="mt-4 rounded-2xl bg-brand-ice/70 p-4 text-sm font-semibold text-slate-600">{actor.availabilityNote}</p>}
+          <div className="mt-7 border-t border-brand-silver/70 pt-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-brand-navy">Screen and stage credits</h3>
+                <p className="mt-1 text-sm text-slate-500">Shows, commercials, theatre, film, and featured work.</p>
+              </div>
+              <span className="rounded-full bg-brand-navy px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-brand-cyan">{actor.credits.length} credits</span>
+            </div>
+            {actor.credits.length ? (
+              <div className="mt-4 overflow-hidden rounded-2xl border border-brand-silver/70">
+                {actor.credits.map((credit, index) => (
+                  <div key={`${credit.production}-${credit.year}-${index}`} className="grid gap-1 border-b border-slate-100 bg-white p-4 last:border-b-0 sm:grid-cols-[1fr_90px_1fr]">
+                    <p className="font-bold text-brand-navy">{credit.production || "Untitled production"}</p>
+                    <p className="text-sm font-semibold text-slate-500">{credit.year || "Year"}</p>
+                    <p className="text-sm font-semibold text-slate-700">{credit.role || "Role not specified"}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-4 rounded-2xl border border-dashed border-brand-silver bg-brand-ice/40 p-5 text-sm font-semibold text-slate-500">No credits listed yet.</p>
+            )}
+          </div>
         </section>
       )}
       {tab === "photos" && (

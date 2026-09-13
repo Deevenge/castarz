@@ -1,7 +1,7 @@
 "use client";
 
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
-import { Building2, Camera, CheckCircle2, LoaderCircle, LogOut, Save } from "lucide-react";
+import { Building2, Camera, CheckCircle2, ImagePlus, LoaderCircle, LogOut, Save } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { type ChangeEvent, type FormEvent, useEffect, useState } from "react";
@@ -15,9 +15,10 @@ type AgencyProfile = {
   username: string;
   description: string;
   photo: string;
+  banner: string;
 };
 
-const empty: AgencyProfile = { name: "", username: "", description: "", photo: "" };
+const empty: AgencyProfile = { name: "", username: "", description: "", photo: "", banner: "" };
 
 export default function AgencyProfilePage() {
   const { user, signOut } = useAuth();
@@ -26,6 +27,7 @@ export default function AgencyProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
@@ -37,6 +39,7 @@ export default function AgencyProfilePage() {
         username: typeof data?.username === "string" ? data.username : "",
         description: typeof data?.description === "string" ? data.description : "",
         photo: typeof data?.photo === "string" ? data.photo : "",
+        banner: typeof data?.banner === "string" ? data.banner : "",
       });
     }).catch(() => setNotice("We could not load the agency profile.")).finally(() => setLoading(false));
   }, [user]);
@@ -54,6 +57,7 @@ export default function AgencyProfilePage() {
         username: agency.username.trim().replace(/^@/, ""),
         description: agency.description.trim(),
         photo: agency.photo,
+        banner: agency.banner,
         updatedAt: serverTimestamp(),
       }, { merge: true });
       setNotice("Agency profile saved. Your posts and briefs now use this identity.");
@@ -82,6 +86,24 @@ export default function AgencyProfilePage() {
     }
   }
 
+  async function uploadBanner(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file || !user) return;
+    setUploadingBanner(true);
+    setNotice("");
+    try {
+      const banner = await compressImageToDataUrl(file);
+      setAgency((current) => ({ ...current, banner }));
+      await setDoc(doc(db, "agencies", user.uid), { banner, updatedAt: serverTimestamp() }, { merge: true });
+      setNotice("Agency banner updated.");
+    } catch {
+      setNotice("We could not upload that banner. Please try again.");
+    } finally {
+      setUploadingBanner(false);
+      event.target.value = "";
+    }
+  }
+
   async function handleSignOut() {
     await signOut();
     router.replace("/auth");
@@ -94,8 +116,14 @@ export default function AgencyProfilePage() {
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <section className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-brand-silver/70">
-        <div className="relative h-44 bg-[radial-gradient(circle_at_20%_20%,#7ea2ff_0,#2857df_28%,#071a38_72%)] sm:h-56">
+        <div className="relative h-44 overflow-hidden bg-[radial-gradient(circle_at_20%_20%,#7ea2ff_0,#2857df_28%,#071a38_72%)] sm:h-56">
+          {agency.banner ? <Image src={agency.banner} alt="" fill unoptimized className="object-cover object-center" /> : null}
           <div className="absolute inset-0 bg-gradient-to-t from-brand-navy/60 via-transparent to-white/10" />
+          <label className="absolute bottom-4 right-4 z-10 inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl bg-white/90 px-3 text-sm font-bold text-brand-navy shadow-sm backdrop-blur hover:bg-white">
+            {uploadingBanner ? <LoaderCircle className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
+            Banner
+            <input type="file" accept="image/*" onChange={(event) => void uploadBanner(event)} className="sr-only" />
+          </label>
         </div>
         <div className="px-5 pb-5 sm:px-7">
           <div className="relative -mt-14 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -127,12 +155,13 @@ export default function AgencyProfilePage() {
           </div>
         </div>
         <div className="mt-6 grid gap-5 sm:grid-cols-2">
-          <Field label="Agency name" value={agency.name} set={(name) => setAgency({ ...agency, name })} placeholder="e.g. Mosaic Casting" required />
-          <Field label="Username" value={agency.username} set={(username) => setAgency({ ...agency, username })} placeholder="e.g. mosaiccasting" prefix="@" required />
+          <Field label="Agency name" value={agency.name} set={(name) => setAgency({ ...agency, name })} placeholder="e.g. Mosaic Casting" help="This is the name actors see on briefs, posts, and chat threads." required />
+          <Field label="Username" value={agency.username} set={(username) => setAgency({ ...agency, username })} placeholder="e.g. mosaiccasting" help="Keep it short and searchable; you can type it with or without the @." prefix="@" required />
         </div>
         <label className="mt-5 block">
           <span className="mb-2 block text-sm font-bold text-slate-700">About your agency</span>
-          <textarea value={agency.description} onChange={(event) => setAgency({ ...agency, description: event.target.value })} rows={4} placeholder="Tell actors what your agency is known for." className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
+          <textarea value={agency.description} onChange={(event) => setAgency({ ...agency, description: event.target.value })} rows={4} placeholder="Tell actors what your agency is known for, the productions you cast, and what kind of talent should connect with you." className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
+          <p className="mt-2 text-xs font-semibold text-slate-500">This appears on your public agency profile, so make it warm, credible, and specific.</p>
         </label>
         {notice && <p className="mt-5 flex items-center gap-2 rounded-xl bg-brand-ice px-4 py-3 text-sm font-semibold text-brand-navy"><CheckCircle2 className="size-5 text-brand-blue" />{notice}</p>}
         <button disabled={saving} className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-blue font-bold text-white hover:bg-brand-navy disabled:opacity-50">
@@ -146,7 +175,7 @@ export default function AgencyProfilePage() {
   );
 }
 
-function Field({ label, value, set, placeholder, prefix, required }: { label: string; value: string; set: (value: string) => void; placeholder: string; prefix?: string; required?: boolean }) {
+function Field({ label, value, set, placeholder, help, prefix, required }: { label: string; value: string; set: (value: string) => void; placeholder: string; help: string; prefix?: string; required?: boolean }) {
   return (
     <label>
       <span className="mb-2 block text-sm font-bold text-slate-700">{label}</span>
@@ -154,6 +183,7 @@ function Field({ label, value, set, placeholder, prefix, required }: { label: st
         {prefix && <span className="absolute inset-y-0 left-4 flex items-center font-bold text-slate-400">{prefix}</span>}
         <input required={required} value={value} onChange={(event) => set(event.target.value)} placeholder={placeholder} className={`min-h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20 ${prefix ? "pl-8" : ""}`} />
       </div>
+      <p className="mt-2 text-xs font-semibold text-slate-500">{help}</p>
     </label>
   );
 }

@@ -7,6 +7,12 @@ export const maxPhotosPerAlbumCategory = 2;
 export type AlbumCategory = (typeof albumCategories)[number];
 export type AvailabilityStatus = "Available" | "Limited availability" | "Unavailable";
 
+export interface ActorCredit {
+  production: string;
+  year: string;
+  role: string;
+}
+
 export interface ActorProfile {
   fullName: string;
   stageName: string;
@@ -20,6 +26,8 @@ export interface ActorProfile {
   availableFrom: string;
   availabilityNote: string;
   headshot: string;
+  banner: string;
+  credits: ActorCredit[];
   albums: Record<AlbumCategory, string[]>;
 }
 
@@ -36,6 +44,8 @@ export const emptyActorProfile: ActorProfile = {
   availableFrom: "",
   availabilityNote: "",
   headshot: "",
+  banner: "",
+  credits: [],
   albums: { Formal: [], Casual: [], Commercial: [], Fitness: [] },
 };
 
@@ -57,9 +67,18 @@ export async function compressImageToDataUrl(file: File): Promise<string> {
 
 export function normalizeActorProfile(data: Partial<ActorProfile> | undefined): ActorProfile {
   const albums = { ...emptyActorProfile.albums, ...data?.albums };
+  const credits = Array.isArray(data?.credits)
+    ? data.credits.map((credit) => ({
+      production: typeof credit?.production === "string" ? credit.production : "",
+      year: typeof credit?.year === "string" ? credit.year : "",
+      role: typeof credit?.role === "string" ? credit.role : "",
+    })).filter((credit) => credit.production.trim() || credit.year.trim() || credit.role.trim()).slice(0, 12)
+    : [];
   return {
     ...emptyActorProfile,
     ...data,
+    banner: typeof data?.banner === "string" ? data.banner : "",
+    credits,
     albums: Object.fromEntries(albumCategories.map((category) => [category, (albums[category] ?? []).slice(0, maxPhotosPerAlbumCategory)])) as ActorProfile["albums"],
   };
 }

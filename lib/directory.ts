@@ -12,6 +12,7 @@ export interface DirectoryAgency {
   username: string;
   description: string;
   photo: string;
+  banner: string;
 }
 
 export function directoryActorFromData(uid: string, data: DocumentData | undefined): DirectoryActor {
@@ -26,6 +27,7 @@ export function directoryAgencyFromData(id: string, data: DocumentData | undefin
     username: typeof data?.username === "string" ? data.username : "",
     description: typeof data?.description === "string" && data.description.trim() ? data.description : "Casting agency on CASTARZ",
     photo: typeof data?.photo === "string" ? data.photo : "",
+    banner: typeof data?.banner === "string" ? data.banner : "",
   };
 }
 
@@ -43,8 +45,8 @@ export function actorDisplayName(actor: Pick<DirectoryActor, "fullName" | "stage
   return actor.stageName || actor.fullName || "CASTARZ Actor";
 }
 
-export function actorCover(actor: Pick<DirectoryActor, "headshot" | "albums">) {
-  return actor.albums.Formal[0] || actor.albums.Casual[0] || actor.albums.Commercial[0] || actor.albums.Fitness[0] || actor.headshot;
+export function actorCover(actor: Pick<DirectoryActor, "banner" | "headshot" | "albums">) {
+  return actor.banner || actor.albums.Formal[1] || actor.albums.Casual[1] || actor.albums.Commercial[1] || actor.albums.Fitness[1] || actor.headshot;
 }
 
 export const emptyDirectoryActor: DirectoryActor = { uid: "", ...emptyActorProfile };

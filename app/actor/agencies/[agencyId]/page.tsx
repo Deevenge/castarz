@@ -128,6 +128,7 @@ export default function AgencyPublicPage() {
         name={agency.name}
         username={agency.username}
         photo={agency.photo}
+        banner={agency.banner}
         backHref="/actor/network"
         actions={
           status === "approved" && user ? (
