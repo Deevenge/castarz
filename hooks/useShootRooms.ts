@@ -1,9 +1,10 @@
 "use client";
 
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, where } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
+import { normalizeActorProfile, type ActorProfile } from "@/lib/actor-profile";
 
 export interface ShootRoomActor {
   uid: string;
@@ -78,6 +79,34 @@ function actorSummaryFromData(value: unknown): ShootRoomActor | null {
     }).filter((credit) => credit.production || credit.year || credit.role).slice(0, 8) : [],
     albums,
   };
+}
+
+function zCardHasDetails(actor: ShootRoomActor | null) {
+  if (!actor) return false;
+  return Boolean(actor.bio || actor.ageRange || actor.heightCm || actor.hairColor || actor.eyeColor || actor.credits.length || Object.values(actor.albums).some((photos) => photos.length));
+}
+
+function zCardSnapshotFromActor(uid: string, actor: ActorProfile): ShootRoomActor {
+  return {
+    uid,
+    name: actor.stageName || actor.fullName || "Booked actor",
+    photo: actor.headshot,
+    bio: actor.bio,
+    ageRange: actor.ageRange,
+    heightCm: actor.heightCm,
+    hairColor: actor.hairColor,
+    eyeColor: actor.eyeColor,
+    credits: actor.credits.slice(0, 8),
+    albums: actor.albums,
+  };
+}
+
+async function hydrateActorZCard(roomId: string, actor: ShootRoomActor) {
+  const snapshot = await getDoc(doc(db, "actors", actor.uid));
+  if (!snapshot.exists()) return null;
+  const profile = zCardSnapshotFromActor(actor.uid, normalizeActorProfile(snapshot.data()));
+  await setDoc(doc(db, "shootRooms", roomId, "actorZCards", actor.uid), { ...profile, updatedAt: serverTimestamp() }, { merge: true }).catch(() => undefined);
+  return profile;
 }
 
 export function useShootRooms() {
@@ -167,4 +196,29 @@ export function useShootMessages(activeRoomId: string) {
     messagesLoading: Boolean(user && activeRoomId && loadedMessagesFor !== activeRoomId && !messagesError),
     messagesError,
   };
+}
+
+export function useShootRoomActorZCard(roomId: string, actor: ShootRoomActor | null) {
+  const { user } = useAuth();
+  const [zCardResult, setZCardResult] = useState<{ key: string; card: ShootRoomActor | null }>({ key: "", card: null });
+  const key = roomId && actor?.uid ? `${roomId}:${actor.uid}` : "";
+
+  useEffect(() => {
+    if (!user || !roomId || !actor?.uid) return;
+    return onSnapshot(doc(db, "shootRooms", roomId, "actorZCards", actor.uid), (snapshot) => {
+      const next = actorSummaryFromData({ ...actor, ...snapshot.data(), uid: actor.uid });
+      setZCardResult({ key: `${roomId}:${actor.uid}`, card: next });
+      if (!zCardHasDetails(next ?? actor)) {
+        void hydrateActorZCard(roomId, actor).then((profile) => {
+          if (profile) setZCardResult({ key: `${roomId}:${actor.uid}`, card: profile });
+        }).catch(() => undefined);
+      }
+    }, (snapshotError) => {
+      console.error("Unable to load shoot room z-card.", snapshotError);
+      setZCardResult({ key: `${roomId}:${actor.uid}`, card: null });
+    });
+  }, [actor, roomId, user]);
+
+  const zCard = zCardResult.key === key && zCardResult.card ? zCardResult.card : actor;
+  return { zCard, loading: Boolean(key && zCardResult.key !== key) };
 }

@@ -58,6 +58,7 @@ const deleteReasons = [
 ];
 
 type FinalCommsMode = "whatsapp" | "shootRoom";
+type ActorZCardSnapshot = { name: string; photo: string; bio: string; ageRange: string; heightCm: string; hairColor: string; eyeColor: string; credits: ActorCredit[]; albums: ActorProfile["albums"] };
 
 export default function BriefsPage() {
   const { user, profile } = useAuth();
@@ -408,11 +409,25 @@ function finalMessageFor(mode: FinalCommsMode, title: string) {
     : `Congratulations, you are booked for ${title}. Your CASTARZ shoot room is ready for final production communication.`;
 }
 
+function zCardSnapshotFromActor(actor: ActorProfile): ActorZCardSnapshot {
+  return {
+    name: actor.stageName || actor.fullName || "Actor",
+    photo: actor.headshot,
+    bio: actor.bio,
+    ageRange: actor.ageRange,
+    heightCm: actor.heightCm,
+    hairColor: actor.hairColor,
+    eyeColor: actor.eyeColor,
+    credits: actor.credits.slice(0, 8),
+    albums: actor.albums,
+  };
+}
+
 function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: { brief: AgentBrief; applications: Application[]; senderUid: string; onClose: () => void; onDone: (message: string) => void }) {
   const shortlist = useMemo(() => applications.filter((application) => application.status === "standby" || application.status === "selected" || application.status === "booked"), [applications]);
   const shortlistKey = shortlist.map((application) => application.id).join("|");
   const [selectedBookingIds, setSelectedBookingIds] = useState<string[]>(shortlist.filter((application) => application.status === "selected" || application.status === "booked").map((application) => application.id));
-  const [actorDetails, setActorDetails] = useState<Record<string, { name: string; photo: string; bio: string; ageRange: string; heightCm: string; hairColor: string; eyeColor: string; credits: ActorCredit[]; albums: ActorProfile["albums"] }>>({});
+  const [actorDetails, setActorDetails] = useState<Record<string, ActorZCardSnapshot>>({});
   const [previewPhoto, setPreviewPhoto] = useState<{ photo: string; label: string } | null>(null);
   const [commsMode, setCommsMode] = useState<FinalCommsMode>("whatsapp");
   const [message, setMessage] = useState(finalMessageFor("whatsapp", brief.title));
@@ -426,18 +441,8 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
     let active = true;
     void Promise.all(shortlist.map(async (application) => {
       const snapshot = await getDoc(doc(db, "actors", application.actorUid));
-      const actor = normalizeActorProfile(snapshot.data());
-      return [application.actorUid, {
-        name: actor.stageName || actor.fullName || "Actor",
-        photo: actor.headshot,
-        bio: actor.bio,
-        ageRange: actor.ageRange,
-        heightCm: actor.heightCm,
-        hairColor: actor.hairColor,
-        eyeColor: actor.eyeColor,
-        credits: actor.credits.slice(0, 8),
-        albums: actor.albums,
-      }] as const;
+        const actor = normalizeActorProfile(snapshot.data());
+      return [application.actorUid, zCardSnapshotFromActor(actor)] as const;
     })).then((entries) => {
       if (active) setActorDetails(Object.fromEntries(entries));
     }).catch(() => undefined);
@@ -456,6 +461,11 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
     try {
       const shootRoomId = `shoot_${brief.id}`;
       const usingShootRoom = commsMode === "shootRoom";
+      const freshDetails = Object.fromEntries(await Promise.all(selectedBookings.map(async (application) => {
+        const snapshot = await getDoc(doc(db, "actors", application.actorUid));
+        return [application.actorUid, zCardSnapshotFromActor(normalizeActorProfile(snapshot.data()))] as const;
+      })));
+      const finalActorDetails = { ...actorDetails, ...freshDetails };
       const batch = writeBatch(db);
       batch.update(doc(db, "briefs", brief.id), {
         status: "closed",
@@ -467,7 +477,7 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
         updatedAt: serverTimestamp(),
       });
       selectedBookings.forEach((application) => {
-        const actorName = actorDetails[application.actorUid]?.name || "Actor";
+        const actorName = finalActorDetails[application.actorUid]?.name || "Actor";
         batch.update(doc(db, "applications", application.id), { status: "booked", decidedAt: serverTimestamp(), updatedAt: serverTimestamp() });
         batch.set(doc(db, "bookings", application.id), {
           applicationId: application.id,
@@ -493,15 +503,15 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
       if (usingShootRoom && selectedBookings.length) {
         const actorSummaries = selectedBookings.map((application) => ({
           uid: application.actorUid,
-          name: actorDetails[application.actorUid]?.name || "Booked actor",
-          photo: actorDetails[application.actorUid]?.photo || "",
-          bio: actorDetails[application.actorUid]?.bio || "",
-          ageRange: actorDetails[application.actorUid]?.ageRange || "",
-          heightCm: actorDetails[application.actorUid]?.heightCm || "",
-          hairColor: actorDetails[application.actorUid]?.hairColor || "",
-          eyeColor: actorDetails[application.actorUid]?.eyeColor || "",
-          credits: actorDetails[application.actorUid]?.credits || [],
-          albums: actorDetails[application.actorUid]?.albums || {},
+          name: finalActorDetails[application.actorUid]?.name || "Booked actor",
+          photo: finalActorDetails[application.actorUid]?.photo || "",
+          bio: finalActorDetails[application.actorUid]?.bio || "",
+          ageRange: finalActorDetails[application.actorUid]?.ageRange || "",
+          heightCm: finalActorDetails[application.actorUid]?.heightCm || "",
+          hairColor: finalActorDetails[application.actorUid]?.hairColor || "",
+          eyeColor: finalActorDetails[application.actorUid]?.eyeColor || "",
+          credits: finalActorDetails[application.actorUid]?.credits || [],
+          albums: finalActorDetails[application.actorUid]?.albums || {},
         }));
         batch.set(doc(db, "shootRooms", shootRoomId), {
           agencyId: senderUid,
@@ -518,6 +528,9 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         }, { merge: true });
+        actorSummaries.forEach((summary) => {
+          batch.set(doc(db, "shootRooms", shootRoomId, "actorZCards", summary.uid), summary, { merge: true });
+        });
       }
       await batch.commit();
       await Promise.all([

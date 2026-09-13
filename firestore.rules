@@ -325,6 +325,25 @@ service cloud.firestore {
         );
       allow delete: if false;
 
+      match /actorZCards/{actorUid} {
+        function parentShootRoom() {
+          return get(/databases/$(database)/documents/shootRooms/$(roomId)).data;
+        }
+        function parentShootRoomAfter() {
+          return getAfter(/databases/$(database)/documents/shootRooms/$(roomId)).data;
+        }
+        function isShootZCardParticipant() {
+          return signedIn() && parentShootRoom().participantUids.hasAny([request.auth.uid]);
+        }
+
+        allow read: if isShootZCardParticipant();
+        allow create, update: if isAgent()
+          && parentShootRoomAfter().agencyId == request.auth.uid
+          && parentShootRoomAfter().participantUids.hasAny([actorUid])
+          && request.resource.data.uid == actorUid;
+        allow delete: if false;
+      }
+
       match /messages/{messageId} {
         function parentShootRoom() {
           return get(/databases/$(database)/documents/shootRooms/$(roomId)).data;

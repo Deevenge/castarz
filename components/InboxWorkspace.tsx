@@ -9,7 +9,7 @@ import { type FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState }
 import { useAuth } from "@/context/AuthContext";
 import { type InboxItem, useInbox } from "@/hooks/useInbox";
 import { type ChatConversation, useChatMessages, useChats } from "@/hooks/useChats";
-import { type ShootRoom, type ShootRoomActor, useShootMessages, useShootRooms } from "@/hooks/useShootRooms";
+import { type ShootRoom, type ShootRoomActor, useShootMessages, useShootRoomActorZCard, useShootRooms } from "@/hooks/useShootRooms";
 import { deleteConversationForMe, markConversationRead, sendChatMessage } from "@/lib/chat";
 import { db } from "@/lib/firebase";
 import type { NotificationType } from "@/lib/notify";
@@ -531,7 +531,7 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
         </>
       )}
       {deleteTarget && <DeleteInboxItemDialog target={deleteTarget} deleting={deleting} close={() => setDeleteTarget(null)} confirm={() => void confirmDeleteTarget()} />}
-      {selectedShootActor && <ShootActorCard actor={selectedShootActor} close={() => setSelectedShootActor(null)} />}
+      {selectedShootActor && <ShootActorCard roomId={activeShootRoomId} actor={selectedShootActor} close={() => setSelectedShootActor(null)} />}
     </div>
   );
 }
@@ -633,9 +633,11 @@ function ShootRoomHeader({ room, uid, onBack, openActor }: { room: ShootRoom; ui
   );
 }
 
-function ShootActorCard({ actor, close }: { actor: ShootRoomActor; close: () => void }) {
-  const specs = [actor.ageRange, actor.heightCm && `${actor.heightCm} cm`, actor.hairColor, actor.eyeColor].filter(Boolean);
-  const albumPhotos = Object.entries(actor.albums ?? {}).flatMap(([category, photos]) => photos.map((photo) => ({ category, photo }))).slice(0, 8);
+function ShootActorCard({ roomId, actor, close }: { roomId: string; actor: ShootRoomActor; close: () => void }) {
+  const { zCard, loading } = useShootRoomActorZCard(roomId, actor);
+  const profile = zCard ?? actor;
+  const specs = [profile.ageRange, profile.heightCm && `${profile.heightCm} cm`, profile.hairColor, profile.eyeColor].filter(Boolean);
+  const albumPhotos = Object.entries(profile.albums ?? {}).flatMap(([category, photos]) => photos.map((photo) => ({ category, photo }))).slice(0, 8);
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center bg-brand-navy/55 p-0 backdrop-blur-sm sm:items-center sm:p-6">
       <article className="max-h-[94dvh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
@@ -647,12 +649,12 @@ function ShootActorCard({ actor, close }: { actor: ShootRoomActor; close: () => 
           </button>
           <div className="relative z-10 flex min-h-56 items-end gap-4 p-6 text-white sm:p-8">
             <div className="relative flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-3xl bg-white text-lg font-black text-brand-navy ring-4 ring-white/25">
-              {actor.photo ? <Image src={actor.photo} alt="" fill unoptimized className="object-cover" /> : initials(actor.name)}
+              {profile.photo ? <Image src={profile.photo} alt="" fill unoptimized className="object-cover" /> : initials(profile.name)}
             </div>
             <div className="min-w-0 pb-1">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-cyan">Actor z-card</p>
-              <h2 className="mt-1 truncate text-3xl font-bold tracking-tight">{actor.name}</h2>
-              <p className="mt-2 max-w-xl text-sm font-semibold text-white/75">Production-safe profile view for the booked shoot room.</p>
+              <h2 className="mt-1 truncate text-3xl font-bold tracking-tight">{profile.name}</h2>
+              <p className="mt-2 max-w-xl text-sm font-semibold text-white/75">{loading ? "Refreshing profile details..." : "Production-safe profile view for the booked shoot room."}</p>
             </div>
           </div>
         </div>
@@ -664,7 +666,7 @@ function ShootActorCard({ actor, close }: { actor: ShootRoomActor; close: () => 
           )}
           <section className="mt-6">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-blue">About</p>
-            <p className="mt-3 rounded-2xl bg-brand-ice/60 p-4 text-sm leading-6 text-slate-700">{actor.bio || "This actor has not added a bio yet."}</p>
+            <p className="mt-3 rounded-2xl bg-brand-ice/60 p-4 text-sm leading-6 text-slate-700">{profile.bio || "This actor has not added a bio yet."}</p>
           </section>
           <section className="mt-7 border-t border-brand-silver/70 pt-6">
             <div className="flex items-center justify-between gap-3">
@@ -672,11 +674,11 @@ function ShootActorCard({ actor, close }: { actor: ShootRoomActor; close: () => 
                 <h3 className="font-bold text-brand-navy">Screen and stage credits</h3>
                 <p className="mt-1 text-sm text-slate-500">Shows, commercials, theatre, film, and featured work.</p>
               </div>
-              <span className="rounded-full bg-brand-navy px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-brand-cyan">{actor.credits.length} credits</span>
+              <span className="rounded-full bg-brand-navy px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-brand-cyan">{profile.credits.length} credits</span>
             </div>
-            {actor.credits.length ? (
+            {profile.credits.length ? (
               <div className="mt-4 overflow-hidden rounded-2xl border border-brand-silver/70">
-                {actor.credits.map((credit, index) => (
+                {profile.credits.map((credit, index) => (
                   <div key={`${credit.production}-${credit.year}-${credit.role}-${index}`} className="grid gap-4 border-b border-slate-100 bg-white p-4 last:border-b-0 sm:grid-cols-[120px_1fr]">
                     <div className="relative aspect-video overflow-hidden rounded-2xl bg-brand-ice">
                       {credit.mediaType === "image" && credit.mediaUrl ? (
