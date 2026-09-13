@@ -402,14 +402,20 @@ function BriefCard({ brief, applications, onClose, onEdit, onDelete }: { brief: 
   );
 }
 
+function finalMessageFor(mode: FinalCommsMode, title: string) {
+  return mode === "whatsapp"
+    ? `Congratulations, you are booked for ${title}. Please join the WhatsApp group for final shoot communication.`
+    : `Congratulations, you are booked for ${title}. Your CASTARZ shoot room is ready for final production communication.`;
+}
+
 function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: { brief: AgentBrief; applications: Application[]; senderUid: string; onClose: () => void; onDone: (message: string) => void }) {
   const shortlist = useMemo(() => applications.filter((application) => application.status === "standby" || application.status === "selected" || application.status === "booked"), [applications]);
   const shortlistKey = shortlist.map((application) => application.id).join("|");
   const [selectedBookingIds, setSelectedBookingIds] = useState<string[]>(shortlist.filter((application) => application.status === "selected" || application.status === "booked").map((application) => application.id));
-  const [actorDetails, setActorDetails] = useState<Record<string, { name: string; photo: string }>>({});
+  const [actorDetails, setActorDetails] = useState<Record<string, { name: string; photo: string; bio: string; ageRange: string; heightCm: string; hairColor: string; eyeColor: string; credits: Array<{ production: string; year: string; role: string }> }>>({});
   const [previewPhoto, setPreviewPhoto] = useState<{ photo: string; label: string } | null>(null);
-  const [message, setMessage] = useState(`Congratulations, you are booked for ${brief.title}. Please join the WhatsApp group for final shoot communication.`);
   const [commsMode, setCommsMode] = useState<FinalCommsMode>("whatsapp");
+  const [message, setMessage] = useState(finalMessageFor("whatsapp", brief.title));
   const [whatsappLink, setWhatsappLink] = useState("");
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
@@ -421,7 +427,16 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
     void Promise.all(shortlist.map(async (application) => {
       const snapshot = await getDoc(doc(db, "actors", application.actorUid));
       const actor = normalizeActorProfile(snapshot.data());
-      return [application.actorUid, { name: actor.stageName || actor.fullName || "Actor", photo: actor.headshot }] as const;
+      return [application.actorUid, {
+        name: actor.stageName || actor.fullName || "Actor",
+        photo: actor.headshot,
+        bio: actor.bio,
+        ageRange: actor.ageRange,
+        heightCm: actor.heightCm,
+        hairColor: actor.hairColor,
+        eyeColor: actor.eyeColor,
+        credits: actor.credits.map((credit) => ({ production: credit.production, year: credit.year, role: credit.role })).slice(0, 6),
+      }] as const;
     })).then((entries) => {
       if (active) setActorDetails(Object.fromEntries(entries));
     }).catch(() => undefined);
@@ -479,6 +494,12 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
           uid: application.actorUid,
           name: actorDetails[application.actorUid]?.name || "Booked actor",
           photo: actorDetails[application.actorUid]?.photo || "",
+          bio: actorDetails[application.actorUid]?.bio || "",
+          ageRange: actorDetails[application.actorUid]?.ageRange || "",
+          heightCm: actorDetails[application.actorUid]?.heightCm || "",
+          hairColor: actorDetails[application.actorUid]?.hairColor || "",
+          eyeColor: actorDetails[application.actorUid]?.eyeColor || "",
+          credits: actorDetails[application.actorUid]?.credits || [],
         }));
         batch.set(doc(db, "shootRooms", shootRoomId), {
           agencyId: senderUid,
@@ -594,12 +615,12 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
             <p className="text-sm font-bold text-brand-navy">Final communication channel</p>
             <p className="mt-1 text-sm text-slate-600">Choose where booked actors should receive production-day communication.</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <button type="button" onClick={() => setCommsMode("whatsapp")} className={`rounded-2xl border-2 p-4 text-left transition ${commsMode === "whatsapp" ? "border-emerald-500 bg-emerald-50" : "border-slate-200 bg-white hover:border-emerald-200"}`}>
+              <button type="button" onClick={() => { setCommsMode("whatsapp"); setMessage(finalMessageFor("whatsapp", brief.title)); }} className={`rounded-2xl border-2 p-4 text-left transition ${commsMode === "whatsapp" ? "border-emerald-500 bg-emerald-50" : "border-slate-200 bg-white hover:border-emerald-200"}`}>
                 <MessageCircle className="size-5 text-emerald-600" />
                 <p className="mt-3 font-bold text-brand-navy">Paste WhatsApp link</p>
                 <p className="mt-1 text-sm leading-5 text-slate-600">Actors receive the final booking message and join the WhatsApp group.</p>
               </button>
-              <button type="button" onClick={() => setCommsMode("shootRoom")} className={`rounded-2xl border-2 p-4 text-left transition ${commsMode === "shootRoom" ? "border-brand-blue bg-brand-ice" : "border-slate-200 bg-white hover:border-brand-cyan"}`}>
+              <button type="button" onClick={() => { setCommsMode("shootRoom"); setMessage(finalMessageFor("shootRoom", brief.title)); }} className={`rounded-2xl border-2 p-4 text-left transition ${commsMode === "shootRoom" ? "border-brand-blue bg-brand-ice" : "border-slate-200 bg-white hover:border-brand-cyan"}`}>
                 <UsersRound className="size-5 text-brand-blue" />
                 <p className="mt-3 font-bold text-brand-navy">Use CASTARZ shoot room</p>
                 <p className="mt-1 text-sm leading-5 text-slate-600">Creates a private production room with the agency and booked actors only.</p>

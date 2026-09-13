@@ -9,7 +9,7 @@ import { type FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState }
 import { useAuth } from "@/context/AuthContext";
 import { type InboxItem, useInbox } from "@/hooks/useInbox";
 import { type ChatConversation, useChatMessages, useChats } from "@/hooks/useChats";
-import { type ShootRoom, useShootMessages, useShootRooms } from "@/hooks/useShootRooms";
+import { type ShootRoom, type ShootRoomActor, useShootMessages, useShootRooms } from "@/hooks/useShootRooms";
 import { deleteConversationForMe, markConversationRead, sendChatMessage } from "@/lib/chat";
 import { db } from "@/lib/firebase";
 import type { NotificationType } from "@/lib/notify";
@@ -89,6 +89,7 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
   const [tab, setTab] = useState<"chats" | "shoots" | "notifications">(requestedShoot ? "shoots" : "chats");
   const [selectedChatId, setSelectedChatId] = useState("");
   const [selectedShootId, setSelectedShootId] = useState("");
+  const [selectedShootActor, setSelectedShootActor] = useState<ShootRoomActor | null>(null);
   const [selectedNotificationId, setSelectedNotificationId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
@@ -426,7 +427,7 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
 
             {selectedShoot && user ? (
               <section className="flex min-h-[620px] flex-col bg-[#fbfcff]">
-                <ShootRoomHeader room={selectedShoot} uid={user.uid} onBack={() => setSelectedShootId("")} />
+                <ShootRoomHeader room={selectedShoot} uid={user.uid} onBack={() => setSelectedShootId("")} openActor={setSelectedShootActor} />
                 <div className="flex-1 space-y-4 overflow-y-auto px-4 py-5 sm:px-6">
                   {shootMessagesLoading ? (
                     <div className="flex min-h-60 items-center justify-center"><LoaderCircle className="size-6 animate-spin text-brand-blue" /></div>
@@ -436,15 +437,27 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
                     shootMessages.map((message, index) => {
                       const mine = message.senderUid === user.uid;
                       const showStatus = mine && index === shootMessages.length - 1;
+                      const sender = shootSender(selectedShoot, message.senderUid);
                       return (
                         <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                          <div className={`max-w-[82%] rounded-3xl px-4 py-3 shadow-sm sm:max-w-[70%] ${mine ? "rounded-br-md bg-brand-blue text-white" : "rounded-bl-md bg-white text-slate-700 ring-1 ring-brand-silver/70"}`}>
-                            {!mine && <p className="mb-1 text-xs font-black uppercase tracking-[0.12em] text-brand-blue">{shootSenderName(selectedShoot, message.senderUid, user.uid)}</p>}
-                            <p className="whitespace-pre-wrap leading-6">{message.body}</p>
-                            <p className={`mt-1 flex items-center justify-end gap-1 text-[11px] ${mine ? "text-white/75" : "text-slate-400"}`}>
-                              {timeLabel(message.createdAtMs)}
-                              {showStatus && <span className="inline-flex items-center gap-0.5"><CheckCheck className="size-3.5" />{shootDeliveryLabel(selectedShoot, user.uid)}</span>}
-                            </p>
+                          <div className={`flex max-w-[88%] items-end gap-2 sm:max-w-[72%] ${mine ? "flex-row-reverse" : ""}`}>
+                            {!mine && (
+                              <button type="button" disabled={!sender.actor} onClick={() => sender.actor && setSelectedShootActor(sender.actor)} className="relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-navy text-[10px] font-black text-brand-cyan disabled:cursor-default" aria-label={`Open ${sender.name} z-card`}>
+                                {sender.photo ? <Image src={sender.photo} alt="" fill unoptimized className="object-cover" /> : initials(sender.name)}
+                              </button>
+                            )}
+                            <div className={`rounded-2xl px-3.5 py-2.5 text-sm shadow-sm ${mine ? "rounded-br-md bg-brand-blue text-white" : "rounded-bl-md bg-white text-slate-700 ring-1 ring-brand-silver/70"}`}>
+                              {!mine && (
+                                <button type="button" disabled={!sender.actor} onClick={() => sender.actor && setSelectedShootActor(sender.actor)} className="mb-1 block text-left text-[11px] font-black uppercase tracking-[0.08em] text-brand-blue disabled:cursor-default">
+                                  {sender.name}
+                                </button>
+                              )}
+                              <p className="whitespace-pre-wrap leading-5">{message.body}</p>
+                              <p className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${mine ? "text-white/75" : "text-slate-400"}`}>
+                                {timeLabel(message.createdAtMs)}
+                                {showStatus && <span className="inline-flex items-center gap-0.5"><CheckCheck className="size-3" />{shootDeliveryLabel(selectedShoot, user.uid)}</span>}
+                              </p>
+                            </div>
                           </div>
                         </div>
                       );
@@ -515,10 +528,11 @@ export function InboxWorkspace({ eyebrow, title, empty }: { eyebrow: string; tit
             })}
           </section>
         </div>
-        {selectedNotification && <NotificationDetail item={selectedNotification} close={() => setSelectedNotificationId(null)} />}
+        {selectedNotification && <NotificationDetail item={selectedNotification} close={() => setSelectedNotificationId(null)} openShoot={(roomId) => { setTab("shoots"); setSelectedShootId(roomId); setSelectedNotificationId(null); }} />}
         </>
       )}
       {deleteTarget && <DeleteInboxItemDialog target={deleteTarget} deleting={deleting} close={() => setDeleteTarget(null)} confirm={() => void confirmDeleteTarget()} />}
+      {selectedShootActor && <ShootActorCard actor={selectedShootActor} close={() => setSelectedShootActor(null)} />}
     </div>
   );
 }
@@ -536,10 +550,14 @@ function shootDeliveryLabel(room: ShootRoom, uid: string) {
   return room.readBy.some((readerUid) => readerUid !== uid) ? "Opened" : "Sent";
 }
 
-function shootSenderName(room: ShootRoom, senderUid: string, viewerUid: string) {
-  if (senderUid === room.agencyId) return room.agencyName;
-  if (viewerUid !== room.agencyId) return "Booked actor";
-  return room.actorSummaries.find((actor) => actor.uid === senderUid)?.name ?? "Booked actor";
+function shootSender(room: ShootRoom, senderUid: string) {
+  if (senderUid === room.agencyId) return { name: room.agencyName, photo: "", actor: null };
+  const actor = room.actorSummaries.find((item) => item.uid === senderUid) ?? null;
+  return {
+    name: actor?.name ?? "Booked actor",
+    photo: actor?.photo ?? "",
+    actor,
+  };
 }
 
 function deliveryLabel(conversation: ChatConversation, uid: string) {
@@ -568,7 +586,7 @@ function ChatHeader({ conversation, uid, onBack }: { conversation: ChatConversat
   );
 }
 
-function ShootRoomHeader({ room, uid, onBack }: { room: ShootRoom; uid: string; onBack: () => void }) {
+function ShootRoomHeader({ room, uid, onBack, openActor }: { room: ShootRoom; uid: string; onBack: () => void; openActor: (actor: ShootRoomActor) => void }) {
   const isAgency = uid === room.agencyId;
   return (
     <header className="border-b border-brand-silver/70 bg-white px-4 py-4 sm:px-6">
@@ -592,12 +610,64 @@ function ShootRoomHeader({ room, uid, onBack }: { room: ShootRoom; uid: string; 
       <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
         <span className="shrink-0 rounded-full bg-brand-navy px-3 py-1.5 text-xs font-bold text-brand-cyan">{room.agencyName}</span>
         {room.actorSummaries.map((actor) => (
-          <span key={actor.uid} className="shrink-0 rounded-full bg-brand-ice px-3 py-1.5 text-xs font-bold text-brand-navy">
-            {isAgency ? actor.name : "Booked actor"}
-          </span>
+          <button key={actor.uid} type="button" onClick={() => openActor(actor)} className="flex min-h-8 shrink-0 items-center gap-2 rounded-full bg-brand-ice py-1 pl-1 pr-3 text-xs font-bold text-brand-navy hover:bg-brand-cyan/20">
+            <span className="relative flex size-6 overflow-hidden rounded-full bg-white text-[9px] text-brand-blue">
+              {actor.photo ? <Image src={actor.photo} alt="" fill unoptimized className="object-cover" /> : <span className="m-auto">{initials(actor.name)}</span>}
+            </span>
+            {isAgency ? actor.name : actor.name}
+          </button>
         ))}
       </div>
     </header>
+  );
+}
+
+function ShootActorCard({ actor, close }: { actor: ShootRoomActor; close: () => void }) {
+  const specs = [actor.ageRange, actor.heightCm && `${actor.heightCm} cm`, actor.hairColor, actor.eyeColor].filter(Boolean);
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-brand-navy/55 p-0 backdrop-blur-sm sm:items-center sm:p-6">
+      <article className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl sm:p-8">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-navy text-sm font-black text-brand-cyan">
+              {actor.photo ? <Image src={actor.photo} alt="" fill unoptimized className="object-cover" /> : initials(actor.name)}
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-brand-blue">Shoot room z-card</p>
+              <h2 className="mt-1 truncate text-2xl font-bold text-brand-navy">{actor.name}</h2>
+              <p className="mt-1 text-sm text-slate-500">Visible only inside this booked production room.</p>
+            </div>
+          </div>
+          <button type="button" onClick={close} className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-ice text-brand-navy hover:bg-slate-100" aria-label="Close z-card">
+            <X className="size-5" />
+          </button>
+        </div>
+        {!!specs.length && (
+          <div className="mt-6 flex flex-wrap gap-2">
+            {specs.map((spec) => <span key={spec} className="rounded-full bg-brand-ice px-3 py-1.5 text-xs font-bold text-brand-navy">{spec}</span>)}
+          </div>
+        )}
+        {actor.bio && <p className="mt-5 rounded-2xl bg-brand-ice/60 p-4 text-sm leading-6 text-slate-700">{actor.bio}</p>}
+        <section className="mt-6">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-bold text-brand-navy">Credits</h3>
+            <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-brand-blue ring-1 ring-brand-silver/70">{actor.credits.length}</span>
+          </div>
+          {actor.credits.length ? (
+            <div className="mt-3 overflow-hidden rounded-2xl border border-brand-silver/70">
+              {actor.credits.map((credit, index) => (
+                <div key={`${credit.production}-${credit.year}-${credit.role}-${index}`} className="border-b border-slate-100 p-3 last:border-b-0">
+                  <p className="font-bold text-brand-navy">{credit.production || "Production"}</p>
+                  <p className="mt-1 text-sm text-slate-600">{[credit.role, credit.year].filter(Boolean).join(" · ") || "Credit details pending"}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 rounded-2xl border border-dashed border-brand-silver bg-brand-ice/40 p-4 text-sm font-semibold text-slate-500">No credits shared for this room.</p>
+          )}
+        </section>
+      </article>
+    </div>
   );
 }
 
@@ -685,8 +755,9 @@ function DeleteInboxItemDialog({ target, deleting, close, confirm }: { target: D
   );
 }
 
-function NotificationDetail({ item, close }: { item: InboxItem; close: () => void }) {
+function NotificationDetail({ item, close, openShoot }: { item: InboxItem; close: () => void; openShoot: (roomId: string) => void }) {
   const Icon = icon[item.type];
+  const shootRoomId = item.href.includes("?shoot=") ? item.href.split("?shoot=")[1]?.split("&")[0] ?? "" : "";
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-brand-navy/55 p-0 backdrop-blur-sm sm:items-center sm:p-6">
       <article className="max-h-[92dvh] w-full max-w-xl overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl sm:p-8">
@@ -716,9 +787,15 @@ function NotificationDetail({ item, close }: { item: InboxItem; close: () => voi
               <p className="mt-2 break-all text-xs text-emerald-700">{item.href}</p>
             </div>
           ) : (
-            <Link href={item.href} className="mt-6 inline-flex min-h-11 w-fit items-center rounded-xl bg-brand-navy px-4 text-sm font-bold text-white hover:bg-brand-blue">
-              View more
-            </Link>
+            shootRoomId ? (
+              <button type="button" onClick={() => openShoot(decodeURIComponent(shootRoomId))} className="mt-6 inline-flex min-h-11 w-fit items-center rounded-xl bg-brand-navy px-4 text-sm font-bold text-white hover:bg-brand-blue">
+                View more
+              </button>
+            ) : (
+              <Link href={item.href} className="mt-6 inline-flex min-h-11 w-fit items-center rounded-xl bg-brand-navy px-4 text-sm font-bold text-white hover:bg-brand-blue">
+                View more
+              </Link>
+            )
           )
         )}
       </article>

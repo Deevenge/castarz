@@ -9,6 +9,12 @@ export interface ShootRoomActor {
   uid: string;
   name: string;
   photo: string;
+  bio: string;
+  ageRange: string;
+  heightCm: string;
+  hairColor: string;
+  eyeColor: string;
+  credits: Array<{ production: string; year: string; role: string }>;
 }
 
 export interface ShootRoom {
@@ -48,6 +54,19 @@ function actorSummaryFromData(value: unknown): ShootRoomActor | null {
     uid,
     name: typeof data.name === "string" && data.name.trim() ? data.name : "Booked actor",
     photo: typeof data.photo === "string" ? data.photo : "",
+    bio: typeof data.bio === "string" ? data.bio : "",
+    ageRange: typeof data.ageRange === "string" ? data.ageRange : "",
+    heightCm: typeof data.heightCm === "string" ? data.heightCm : "",
+    hairColor: typeof data.hairColor === "string" ? data.hairColor : "",
+    eyeColor: typeof data.eyeColor === "string" ? data.eyeColor : "",
+    credits: Array.isArray(data.credits) ? data.credits.map((credit) => {
+      const item = credit as Record<string, unknown>;
+      return {
+        production: typeof item.production === "string" ? item.production : "",
+        year: typeof item.year === "string" ? item.year : "",
+        role: typeof item.role === "string" ? item.role : "",
+      };
+    }).filter((credit) => credit.production || credit.year || credit.role).slice(0, 6) : [],
   };
 }
 
