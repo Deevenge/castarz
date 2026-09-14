@@ -120,7 +120,6 @@ export default function ActorDashboardPage() {
         <div>
           <p className="text-sm font-bold tracking-[0.18em] text-brand-blue">ACTOR HOME</p>
           <h1 className="mt-1 text-3xl font-bold tracking-tight">Briefs, buzz, and your next moment.</h1>
-          <p className="mt-2 max-w-2xl text-slate-600">Apply for work, post your latest updates, and explore agency spotlights without leaving Home.</p>
         </div>
         <Link href="/actor/inbox" className="relative flex size-11 shrink-0 items-center justify-center rounded-full bg-white text-brand-navy shadow-sm ring-1 ring-brand-silver/70" aria-label="Notifications"><Bell className="size-5" /></Link>
       </header>
