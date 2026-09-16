@@ -30,6 +30,7 @@ export async function requestAgencyConnection(options: {
     title: "New connection request",
     body: `${options.actorName} wants to join your private talent network.`,
     href: "/agent/network",
+    connectionId: connectionDocId(options.agencyId, options.actorUid),
   });
 }
 

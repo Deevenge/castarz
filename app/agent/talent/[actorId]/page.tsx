@@ -64,6 +64,7 @@ export default function TalentProfilePage() {
           ? "An agency approved your request. Their private briefs can now appear in My agencies."
           : "An agency declined your connection request. You can request again later from Network.",
         href: "/actor/network",
+        connectionId: `${user.uid}_${actorId}`,
       });
     } finally {
       setWorking(false);

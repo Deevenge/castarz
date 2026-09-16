@@ -83,6 +83,7 @@ export default function NetworkPage() {
           ? "An agency approved your request. Their private briefs can now appear in My agencies."
           : "An agency declined your connection request. You can request again later from Network.",
         href: "/actor/network",
+        connectionId: connection.id,
       });
       setNotice(status === "approved" ? `${actor?.fullName || "Actor"} approved into your private talent network.` : "Connection request declined.");
     } catch {

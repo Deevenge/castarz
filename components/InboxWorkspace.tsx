@@ -832,6 +832,11 @@ function DeleteInboxItemDialog({ target, deleting, close, confirm }: { target: D
 function NotificationDetail({ item, close, openShoot }: { item: InboxItem; close: () => void; openShoot: (roomId: string) => void }) {
   const Icon = icon[item.type];
   const shootRoomId = item.href.includes("?shoot=") ? item.href.split("?shoot=")[1]?.split("&")[0] ?? "" : "";
+  const actionLabel = item.href.startsWith("/agent/briefs")
+    ? "Open Casting Briefs"
+    : item.href.startsWith("/actor/briefs")
+      ? "Open My Applications"
+      : "View more";
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-brand-navy/55 p-0 backdrop-blur-sm sm:items-center sm:p-6">
       <article className="max-h-[92dvh] w-full max-w-xl overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl sm:p-8">
@@ -863,11 +868,11 @@ function NotificationDetail({ item, close, openShoot }: { item: InboxItem; close
           ) : (
             shootRoomId ? (
               <button type="button" onClick={() => openShoot(decodeURIComponent(shootRoomId))} className="mt-6 inline-flex min-h-11 w-fit items-center rounded-xl bg-brand-navy px-4 text-sm font-bold text-white hover:bg-brand-blue">
-                View more
+                {actionLabel}
               </button>
             ) : (
               <Link href={item.href} className="mt-6 inline-flex min-h-11 w-fit items-center rounded-xl bg-brand-navy px-4 text-sm font-bold text-white hover:bg-brand-blue">
-                View more
+                {actionLabel}
               </Link>
             )
           )

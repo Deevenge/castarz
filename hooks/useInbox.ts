@@ -28,6 +28,9 @@ function asNotificationType(value: unknown): NotificationType {
     "application_standby",
     "application_rejected",
     "booking_confirmed",
+    "replacement_needed",
+    "replacement_available",
+    "replacement_confirmed",
     "brief_deleted",
     "brief_closed",
   ];

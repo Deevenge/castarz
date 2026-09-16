@@ -3,6 +3,7 @@
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Clock3, Edit3, Globe2, ImagePlus, LoaderCircle, LockKeyhole, MapPin, MessageCircle, Plus, Radio, Send, ShieldCheck, Trash2, UsersRound, X } from "lucide-react";
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from "react";
 import { AgentApplicationsWorkspace } from "@/components/AgentApplicationsWorkspace";
@@ -66,6 +67,8 @@ type ActorZCardSnapshot = { name: string; photo: string; bio: string; ageRange: 
 
 export default function BriefsPage() {
   const { user, profile } = useAuth();
+  const searchParams = useSearchParams();
+  const replacementBriefId = searchParams.get("replacement") ?? "";
   const [briefs, setBriefs] = useState<AgentBrief[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
   const [form, setForm] = useState<BriefForm>(blank);
@@ -101,6 +104,15 @@ export default function BriefsPage() {
       applicationStop();
     };
   }, [user]);
+
+  useEffect(() => {
+    if (!replacementBriefId) return;
+    const timer = window.setTimeout(() => {
+      setSection("briefs");
+      document.getElementById(`brief-${replacementBriefId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [replacementBriefId, briefs.length]);
 
   const applicationsByBrief = useMemo(() => {
     return applications.reduce<Record<string, Application[]>>((groups, application) => {
@@ -301,6 +313,7 @@ export default function BriefsPage() {
               brief={brief}
               applications={applicationsByBrief[brief.id] ?? []}
               senderUid={user?.uid ?? ""}
+              focusReplacement={replacementBriefId === brief.id}
               onClose={() => setClosingBrief(brief)}
               onEdit={() => startEditBrief(brief)}
               onDelete={() => setDeletingBrief(brief)}
@@ -338,7 +351,7 @@ export default function BriefsPage() {
   );
 }
 
-function BriefCard({ brief, applications, senderUid, onClose, onEdit, onDelete, onDone }: { brief: AgentBrief; applications: Application[]; senderUid: string; onClose: () => void; onEdit: () => void; onDelete: () => void; onDone: (message: string) => void }) {
+function BriefCard({ brief, applications, senderUid, focusReplacement, onClose, onEdit, onDelete, onDone }: { brief: AgentBrief; applications: Application[]; senderUid: string; focusReplacement: boolean; onClose: () => void; onEdit: () => void; onDelete: () => void; onDone: (message: string) => void }) {
   const appliedCount = applications.length;
   const shortlistedCount = applications.filter((application) => application.status === "standby" || application.status === "selected" || application.status === "booked").length;
   const selectedCount = applications.filter((application) => application.status === "selected" || application.status === "booked").length;
@@ -347,7 +360,7 @@ function BriefCard({ brief, applications, senderUid, onClose, onEdit, onDelete, 
   const statusTone = brief.status === "closed" ? "bg-slate-100 text-slate-600" : brief.status === "draft" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700";
 
   return (
-    <article className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-brand-silver/70 sm:p-6">
+    <article id={`brief-${brief.id}`} className={`scroll-mt-6 rounded-3xl bg-white p-5 shadow-sm ring-1 sm:p-6 ${focusReplacement ? "ring-2 ring-red-300 shadow-lg shadow-red-100" : "ring-brand-silver/70"}`}>
       <div className="flex flex-wrap justify-between gap-3">
         <div>
           <div className="flex flex-wrap gap-2">
@@ -482,6 +495,8 @@ function ReplacementPool({ brief, applications, senderUid, onDone }: { brief: Ag
         title: `Emergency replacement: ${brief.title}`,
         body: `${brief.agencyName} needs a replacement for ${brief.title}${brief.replacementDeadlineAt ? ` by ${deadlineLabel(brief.replacementDeadlineAt)}` : ""}. Open My Applications and tap “I’m available” if you can make it.`,
         href: "/actor/briefs",
+        applicationId: application.id,
+        briefId: application.briefId,
       })));
       await updateDoc(doc(db, "briefs", brief.id), { replacementAlertedAt: serverTimestamp(), updatedAt: serverTimestamp() });
       onDone(`Emergency replacement alert sent to ${alertableApplications.length} applicant${alertableApplications.length === 1 ? "" : "s"}.`);
@@ -558,6 +573,8 @@ function ReplacementPool({ brief, applications, senderUid, onDone }: { brief: Ag
           ? `You’ve been confirmed as the replacement for ${brief.title}. Final details are in your CASTARZ shoot room.`
           : `You’ve been confirmed as the replacement for ${brief.title}. Final details are in My Applications${brief.whatsappLink ? " with the WhatsApp group link" : ""}.`,
         href: usingShootRoom ? `/actor/inbox?shoot=${brief.shootRoomId}` : "/actor/briefs",
+        applicationId: application.id,
+        briefId: application.briefId,
       });
       onDone(`${actor.name} was confirmed as the replacement for ${brief.title}.`);
     } catch {
@@ -787,6 +804,8 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
           title: `Final booking details: ${brief.title}`,
           body: `${message.trim()} ${usingShootRoom ? "Your shoot room is ready in Inbox, under Shoot Rooms." : "Your WhatsApp group link is ready in My Applications."}`,
           href: usingShootRoom ? `/actor/inbox?shoot=${shootRoomId}` : "/actor/briefs",
+          applicationId: application.id,
+          briefId: application.briefId,
         })),
         ...notSelectedApplications.map((application) => notifyQuietly({
           recipientUid: application.actorUid,
@@ -795,6 +814,8 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
           title: `Final selection update: ${brief.title}`,
           body: `${brief.agencyName} has finalized ${brief.title}. Thank you for applying, but you were not selected for the final booking this time. Keep your profile ready for the next opportunity.`,
           href: "/actor/briefs",
+          applicationId: application.id,
+          briefId: application.briefId,
         })),
       ]);
       onDone(`Brief closed. ${selectedBookings.length} booked actor${selectedBookings.length === 1 ? "" : "s"} and ${notSelectedApplications.length} other applicant${notSelectedApplications.length === 1 ? "" : "s"} notified.`);
@@ -945,6 +966,8 @@ function DeleteBriefDialog({ brief, applications, senderUid, onClose, onDone }: 
         title: `${brief.title} was withdrawn`,
         body: `${brief.agencyName} deleted this brief. Reason: ${finalReason}`,
         href: "/actor/briefs",
+        applicationId: application.id,
+        briefId: application.briefId,
       })));
       await Promise.all([
         ...applications.map((application) => deleteDoc(doc(db, "applications", application.id))),

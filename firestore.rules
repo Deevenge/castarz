@@ -126,6 +126,8 @@ service cloud.firestore {
           && unchanged('actorUid')
           && unchanged('briefId')
           && request.resource.data.status == 'cancelled'
+          && request.resource.data.cancelReason is string
+          && request.resource.data.cancelReason.size() > 0
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelReason', 'cancelledAt', 'replacementRequestId', 'replacementDeadlineAt', 'updatedAt']);
       }
       function actorAvailableAsReplacement() {
@@ -306,27 +308,146 @@ service cloud.firestore {
     }
 
     match /notifications/{notificationId} {
+      function validNotificationShape() {
+        return request.resource.data.keys().hasOnly([
+            'recipientUid',
+            'senderUid',
+            'type',
+            'title',
+            'body',
+            'href',
+            'read',
+            'createdAt',
+            'applicationId',
+            'briefId',
+            'connectionId'
+          ])
+          && request.resource.data.keys().hasAll(['recipientUid', 'senderUid', 'type', 'title', 'body', 'href', 'read', 'createdAt'])
+          && request.resource.data.recipientUid is string
+          && request.resource.data.senderUid is string
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 160
+          && request.resource.data.body is string
+          && request.resource.data.body.size() > 0
+          && request.resource.data.body.size() <= 1000
+          && request.resource.data.href is string
+          && request.resource.data.href.size() <= 500
+          && request.resource.data.read == false
+          && request.resource.data.recipientUid != request.auth.uid
+          && request.resource.data.senderUid == request.auth.uid
+          && (!request.resource.data.keys().hasAny(['applicationId']) || request.resource.data.applicationId is string)
+          && (!request.resource.data.keys().hasAny(['briefId']) || request.resource.data.briefId is string)
+          && (!request.resource.data.keys().hasAny(['connectionId']) || request.resource.data.connectionId is string)
+          && request.resource.data.type in [
+            'connection_request',
+            'connection_approved',
+            'connection_declined',
+            'application_received',
+            'application_shortlisted',
+            'application_standby',
+            'application_rejected',
+            'booking_confirmed',
+            'replacement_needed',
+            'replacement_available',
+            'replacement_confirmed',
+            'brief_deleted',
+            'brief_closed'
+          ];
+      }
+      function hasNotificationApplication() {
+        return request.resource.data.keys().hasAll(['applicationId', 'briefId'])
+          && exists(/databases/$(database)/documents/applications/$(request.resource.data.applicationId));
+      }
+      function notificationApplication() {
+        return get(/databases/$(database)/documents/applications/$(request.resource.data.applicationId)).data;
+      }
+      function notificationBrief() {
+        return get(/databases/$(database)/documents/briefs/$(request.resource.data.briefId)).data;
+      }
+      function applicationPartiesMatchNotification() {
+        return hasNotificationApplication()
+          && notificationApplication().briefId == request.resource.data.briefId
+          && notificationApplication().agencyId == request.resource.data.senderUid
+          && notificationApplication().actorUid == request.resource.data.recipientUid;
+      }
+      function actorApplicationPartiesMatchNotification() {
+        return hasNotificationApplication()
+          && notificationApplication().briefId == request.resource.data.briefId
+          && notificationApplication().actorUid == request.resource.data.senderUid
+          && notificationApplication().agencyId == request.resource.data.recipientUid;
+      }
+      function agentApplicationNotification() {
+        return isAgent()
+          && applicationPartiesMatchNotification()
+          && (
+            (request.resource.data.type == 'application_shortlisted'
+              && notificationApplication().status in ['standby', 'selected'])
+            || (request.resource.data.type == 'application_standby'
+              && notificationApplication().status == 'standby')
+            || (request.resource.data.type == 'application_rejected'
+              && notificationApplication().status == 'rejected')
+            || (request.resource.data.type == 'booking_confirmed'
+              && notificationApplication().status == 'booked')
+            || (request.resource.data.type == 'replacement_confirmed'
+              && notificationApplication().status == 'booked')
+            || (request.resource.data.type == 'replacement_needed'
+              && notificationBrief().agencyId == request.auth.uid
+              && notificationBrief().replacementOpen == true
+              && notificationApplication().status in ['pending', 'standby', 'selected', 'rejected'])
+            || request.resource.data.type in ['brief_deleted', 'brief_closed']
+          );
+      }
+      function actorApplicationNotification() {
+        return isActor()
+          && actorApplicationPartiesMatchNotification()
+          && (
+            (request.resource.data.type == 'application_received'
+              && notificationApplication().status == 'pending')
+            || (request.resource.data.type == 'replacement_needed'
+              && notificationApplication().status == 'cancelled'
+              && notificationBrief().agencyId == request.resource.data.recipientUid
+              && notificationBrief().replacementOpen == true
+              && notificationBrief().replacementCancelledApplicationId == request.resource.data.applicationId)
+            || (request.resource.data.type == 'replacement_available'
+              && notificationApplication().status == 'replacement_available'
+              && notificationBrief().agencyId == request.resource.data.recipientUid
+              && notificationBrief().replacementOpen == true
+              && notificationApplication().replacementRequestId == notificationBrief().replacementRequestId)
+          );
+      }
+      function hasNotificationConnection() {
+        return request.resource.data.keys().hasAll(['connectionId'])
+          && exists(/databases/$(database)/documents/connections/$(request.resource.data.connectionId));
+      }
+      function notificationConnection() {
+        return get(/databases/$(database)/documents/connections/$(request.resource.data.connectionId)).data;
+      }
+      function connectionNotification() {
+        return hasNotificationConnection()
+          && (
+            (isActor()
+              && request.resource.data.type == 'connection_request'
+              && notificationConnection().status == 'pending'
+              && notificationConnection().actorUid == request.resource.data.senderUid
+              && notificationConnection().agencyId == request.resource.data.recipientUid)
+            || (isAgent()
+              && request.resource.data.type in ['connection_approved', 'connection_declined']
+              && notificationConnection().agencyId == request.resource.data.senderUid
+              && notificationConnection().actorUid == request.resource.data.recipientUid
+              && (
+                (request.resource.data.type == 'connection_approved'
+                  && notificationConnection().status == 'approved')
+                || (request.resource.data.type == 'connection_declined'
+                  && notificationConnection().status == 'declined')
+              ))
+          );
+      }
+
       allow read: if signedIn() && resource.data.recipientUid == request.auth.uid;
       allow create: if signedIn()
-        && request.resource.data.senderUid == request.auth.uid
-        && request.resource.data.recipientUid is string
-        && request.resource.data.recipientUid != request.auth.uid
-        && request.resource.data.read == false
-        && request.resource.data.type in [
-          'connection_request',
-          'connection_approved',
-          'connection_declined',
-          'application_received',
-          'application_shortlisted',
-          'application_standby',
-          'application_rejected',
-          'booking_confirmed',
-          'replacement_needed',
-          'replacement_available',
-          'replacement_confirmed',
-          'brief_deleted',
-          'brief_closed'
-        ];
+        && validNotificationShape()
+        && (connectionNotification() || agentApplicationNotification() || actorApplicationNotification());
       allow update: if signedIn()
         && resource.data.recipientUid == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);

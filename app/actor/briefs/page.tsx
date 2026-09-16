@@ -155,6 +155,13 @@ export default function MyApplicationsPage() {
     setReplacementWorkingId(application.id);
     setNotice("");
     try {
+      const actorSnapshot = await getDoc(doc(db, "actors", user.uid));
+      const actorData = actorSnapshot.data();
+      const actorName = typeof actorData?.stageName === "string" && actorData.stageName.trim()
+        ? actorData.stageName
+        : typeof actorData?.fullName === "string" && actorData.fullName.trim()
+          ? actorData.fullName
+          : "A booked actor";
       const batch = writeBatch(db);
       batch.update(doc(db, "applications", application.id), {
         status: "cancelled",
@@ -178,9 +185,11 @@ export default function MyApplicationsPage() {
         recipientUid: application.agencyId,
         senderUid: user.uid,
         type: "replacement_needed",
-        title: `Replacement needed: ${brief.title}`,
-        body: `A booked actor cancelled ${brief.title}. Reason: ${finalReason}. Replacement needed by ${formatDate(deadline)}.`,
-        href: "/agent/briefs",
+        title: `${actorName} wants to cancel: ${brief.title}`,
+        body: `${actorName} requested a replacement for ${brief.title}. Reason: ${finalReason}. Open Casting Briefs to review the replacement pool and choose the final actor by ${formatDate(deadline)}.`,
+        href: `/agent/briefs?replacement=${encodeURIComponent(application.briefId)}`,
+        applicationId: application.id,
+        briefId: application.briefId,
       });
       setCancelTarget(null);
       setNotice("Your agency has been alerted and a replacement slot is open.");
@@ -211,7 +220,9 @@ export default function MyApplicationsPage() {
         type: "replacement_available",
         title: `Available as replacement: ${brief.title}`,
         body: `An actor has confirmed they are available as an emergency replacement for ${brief.title}.`,
-        href: "/agent/briefs",
+        href: `/agent/briefs?replacement=${encodeURIComponent(application.briefId)}`,
+        applicationId: application.id,
+        briefId: application.briefId,
       });
       setNotice("You are in the replacement queue. The agency will confirm if they choose you.");
     } catch {
@@ -305,7 +316,11 @@ export default function MyApplicationsPage() {
                         <button
                           type="button"
                           onPointerDown={(event) => event.stopPropagation()}
-                          onClick={() => setCancelTarget(application)}
+                          onPointerUp={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setCancelTarget(application);
+                          }}
                           className="inline-flex min-h-11 items-center rounded-xl bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700"
                         >
                           Request replacement
@@ -327,7 +342,11 @@ export default function MyApplicationsPage() {
                           type="button"
                           disabled={replacementWorkingId === application.id}
                           onPointerDown={(event) => event.stopPropagation()}
-                          onClick={() => void offerAsReplacement(application)}
+                          onPointerUp={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void offerAsReplacement(application);
+                          }}
                           className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-blue px-4 text-sm font-bold text-white hover:bg-brand-navy disabled:opacity-60"
                         >
                           {replacementWorkingId === application.id ? <LoaderCircle className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
@@ -495,7 +514,8 @@ function formatTimestamp(value: AgentBrief["replacementDeadlineAt"]) {
 function CancelReplacementDialog({ application, title, working, close, confirm }: { application: Application; title: string; working: boolean; close: () => void; confirm: (reason: string) => void }) {
   const [reason, setReason] = useState("");
   const [customReason, setCustomReason] = useState("");
-  const finalReason = reason === "Other" ? customReason.trim() : reason;
+  const typedReason = customReason.trim();
+  const finalReason = reason === "Other" ? typedReason : typedReason || reason;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-brand-navy/55 p-0 backdrop-blur-sm sm:items-center sm:p-6">
@@ -517,12 +537,10 @@ function CancelReplacementDialog({ application, title, working, close, confirm }
             </button>
           ))}
         </div>
-        {reason === "Other" && (
-          <label className="mt-4 block">
-            <span className="mb-2 block text-sm font-bold text-slate-700">Reason</span>
-            <textarea value={customReason} onChange={(event) => setCustomReason(event.target.value)} rows={3} placeholder="Briefly explain why you need to cancel." className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
-          </label>
-        )}
+        <label className="mt-4 block">
+          <span className="mb-2 block text-sm font-bold text-slate-700">{reason === "Other" ? "Reason" : "Add details or type your reason"}</span>
+          <textarea value={customReason} onChange={(event) => setCustomReason(event.target.value)} rows={3} placeholder="Briefly explain why you need to cancel." className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
+        </label>
         <div className="mt-6 grid grid-cols-2 gap-3">
           <button type="button" onClick={close} className="min-h-12 rounded-xl border border-slate-300 font-bold text-slate-600 hover:bg-slate-50">Keep booking</button>
           <button type="button" disabled={working || !finalReason} onClick={() => confirm(finalReason)} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-red-600 font-bold text-white hover:bg-red-700 disabled:opacity-60">

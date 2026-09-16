@@ -3,7 +3,7 @@
 import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, writeBatch, where } from "firebase/firestore";
 import Image from "next/image";
 import Link from "next/link";
-import { CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, Download, ExternalLink, LayoutGrid, ListChecks, LoaderCircle, Maximize2, PlaySquare, Search, UserRound, X, XCircle, ZoomIn } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, Download, ExternalLink, LayoutGrid, ListChecks, LoaderCircle, Maximize2, PlaySquare, Radio, Search, UserRound, X, XCircle, ZoomIn } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { BookingConfirmDialog } from "@/components/BookingConfirmDialog";
 import { PhotoLightbox } from "@/components/ProfileChrome";
@@ -13,7 +13,7 @@ import { db } from "@/lib/firebase";
 import { notifyQuietly } from "@/lib/notify";
 import { albumCategories, normalizeActorProfile, type ActorCredit, type AlbumCategory } from "@/lib/actor-profile";
 
-type Status = "pending" | "standby" | "selected" | "booked" | "rejected";
+type Status = "pending" | "standby" | "selected" | "booked" | "rejected" | "cancelled" | "replacement_available";
 type Application = { id: string; briefId: string; actorUid: string; status: Status };
 type Actor = { fullName: string; stageName: string; bio: string; headshot: string; heightCm: string; hairColor: string; eyeColor: string; ageRange: string; availabilityStatus: string; credits: ActorCredit[]; albums: Record<AlbumCategory, string[]> };
 
@@ -59,7 +59,7 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
       return matchesBrief && matchesStatus && matchesSearch;
     });
   }, [apps, actors, briefs, search, selectedBriefId, statusFilter]);
-  const statusCounts = useMemo(() => apps.reduce<Record<Status, number>>((counts, application) => ({ ...counts, [application.status]: counts[application.status] + 1 }), { pending: 0, standby: 0, selected: 0, booked: 0, rejected: 0 }), [apps]);
+  const statusCounts = useMemo(() => apps.reduce<Record<Status, number>>((counts, application) => ({ ...counts, [application.status]: counts[application.status] + 1 }), { pending: 0, standby: 0, selected: 0, booked: 0, rejected: 0, cancelled: 0, replacement_available: 0 }), [apps]);
   const bookingBrief = bookingApp ? briefs.find((brief) => brief.id === bookingApp.briefId) : undefined;
   const bookingActor = bookingApp ? actors[bookingApp.actorUid] : undefined;
 
@@ -75,12 +75,14 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
       const applicationRef = doc(db, "applications", application.id);
       batch.update(applicationRef, { status, decidedAt: serverTimestamp(), updatedAt: serverTimestamp() });
       await batch.commit();
-      const messages = {
+      const messages: Record<Status, { type: "application_shortlisted" | "application_rejected"; title: string; body: string } | null> = {
         standby: { type: "application_shortlisted" as const, title: "You have been shortlisted", body: `${agencyName} shortlisted you for ${brief?.title ?? "a brief"}. Keep your availability close and stay on the lookout for the final booking update.` },
         selected: null,
         booked: null,
         rejected: { type: "application_rejected" as const, title: "Application update", body: `${agencyName} completed selections for ${brief?.title ?? "a brief"}. Keep your profile ready for the next one.` },
         pending: null,
+        cancelled: null,
+        replacement_available: null,
       };
       const message = messages[status];
       if (message) {
@@ -91,6 +93,8 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
           title: message.title,
           body: message.body,
           href: "/actor/briefs",
+          applicationId: application.id,
+          briefId: application.briefId,
         });
       }
       setActive((current) => current?.id === application.id ? { ...current, status } : current);
@@ -169,7 +173,7 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
           <>
             <ApplicantStoryRail applications={filteredApps} actors={actors} open={setActive} />
             <div className="hidden gap-3 md:grid md:grid-cols-2 xl:grid-cols-3">
-              {filteredApps.map((application) => <ActorCard key={application.id} application={application} actor={actors[application.actorUid]} open={() => setActive(application)} />)}
+              {filteredApps.map((application) => <ActorCard key={application.id} application={application} brief={briefs.find((brief) => brief.id === application.briefId)} actor={actors[application.actorUid]} open={() => setActive(application)} />)}
             </div>
           </>
         ) : groups.length ? (
@@ -240,7 +244,7 @@ function ApplicantStoryRail({ applications, actors, open }: { applications: Appl
   );
 }
 
-function ActorCard({ application, actor, open }: { application: Application; actor?: Actor; open: () => void }) {
+function ActorCard({ application, brief, actor, open }: { application: Application; brief?: AgentBrief; actor?: Actor; open: () => void }) {
   return (
     <div className="group rounded-2xl border border-slate-200 bg-white p-3 transition hover:-translate-y-0.5 hover:border-brand-blue hover:shadow-lg hover:shadow-brand-navy/10">
       <Link href={`/agent/talent/${application.actorUid}`} className="flex items-center gap-3 rounded-xl p-1 hover:bg-brand-ice">
@@ -251,9 +255,21 @@ function ActorCard({ application, actor, open }: { application: Application; act
         </span>
         <StatusBadge status={application.status} />
       </Link>
-      <button type="button" onClick={open} className="mt-3 inline-flex min-h-9 items-center justify-center rounded-xl bg-brand-navy px-4 text-xs font-bold text-white hover:bg-brand-blue">
-        Review application
-      </button>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" onClick={open} className="inline-flex min-h-9 items-center justify-center rounded-xl bg-brand-navy px-4 text-xs font-bold text-white hover:bg-brand-blue">
+          Review application
+        </button>
+        {application.status === "cancelled" && brief?.replacementOpen && (
+          <Link href={`/agent/briefs?replacement=${encodeURIComponent(application.briefId)}`} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl bg-red-600 px-4 text-xs font-bold text-white hover:bg-red-700">
+            <Radio className="size-3.5" />Replace actor
+          </Link>
+        )}
+        {application.status === "replacement_available" && brief?.replacementOpen && (
+          <Link href={`/agent/briefs?replacement=${encodeURIComponent(application.briefId)}`} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl bg-brand-blue px-4 text-xs font-bold text-white hover:bg-brand-navy">
+            <Radio className="size-3.5" />Confirm replacement
+          </Link>
+        )}
+      </div>
     </div>
   );
 }
@@ -271,6 +287,8 @@ function statusLabel(status: Status) {
   if (status === "standby") return "Shortlisted";
   if (status === "selected") return "Selected";
   if (status === "booked") return "Selected";
+  if (status === "cancelled") return "Replacement requested";
+  if (status === "replacement_available") return "Replacement available";
   return "Rejected";
 }
 
@@ -422,7 +440,7 @@ function Avatar({ actor }: { actor?: Actor }) {
 }
 
 function StatusBadge({ status }: { status: Status }) {
-  const tone = status === "booked" || status === "selected" ? "bg-emerald-50 text-emerald-700" : status === "rejected" ? "bg-red-50 text-red-700" : status === "standby" ? "bg-amber-50 text-amber-700" : "bg-brand-ice text-brand-navy";
+  const tone = status === "booked" || status === "selected" ? "bg-emerald-50 text-emerald-700" : status === "rejected" || status === "cancelled" ? "bg-red-50 text-red-700" : status === "standby" ? "bg-amber-50 text-amber-700" : status === "replacement_available" ? "bg-brand-ice text-brand-blue" : "bg-brand-ice text-brand-navy";
   return <span className={`rounded-full px-2 py-1 text-xs font-bold ${tone}`}>{status === "pending" ? "Under review" : statusLabel(status)}</span>;
 }
 

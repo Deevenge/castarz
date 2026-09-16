@@ -75,6 +75,7 @@ export function AgencyConnections() {
         title: "New connection request",
         body: `${actorName} wants to join your private talent network.`,
         href: "/agent/network",
+        connectionId: `${agency.id}_${user.uid}`,
       });
       setNotice(`Request sent to ${agency.name}. They will review your profile.`);
     } catch {

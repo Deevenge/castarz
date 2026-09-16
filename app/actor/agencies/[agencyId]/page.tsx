@@ -116,6 +116,8 @@ export default function AgencyPublicPage() {
         title: "New application",
         body: `An actor applied for ${brief.title}. Open the dossier to review and book.`,
         href: "/agent/applications",
+        applicationId: applicationRef.id,
+        briefId: brief.id,
       });
       setNotice("Application sent. Your agent will review your profile and availability.");
     } catch {

@@ -25,6 +25,9 @@ export interface NotificationPayload {
   title: string;
   body: string;
   href: string;
+  applicationId?: string;
+  briefId?: string;
+  connectionId?: string;
 }
 
 export async function sendNotification(payload: NotificationPayload) {
