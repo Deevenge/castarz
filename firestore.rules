@@ -60,6 +60,28 @@ service cloud.firestore {
       function ownsBrief() {
         return isAgent() && resource.data.agencyId == request.auth.uid;
       }
+      function actorApplicationAfter() {
+        return getAfter(/databases/$(database)/documents/applications/$(briefId + '_' + request.auth.uid)).data;
+      }
+      function actorOpensReplacement() {
+        return isActor()
+          && resource.data.status == 'closed'
+          && exists(/databases/$(database)/documents/applications/$(briefId + '_' + request.auth.uid))
+          && actorApplicationAfter().status == 'cancelled'
+          && request.resource.data.agencyId == resource.data.agencyId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'replacementOpen',
+            'replacementRequestId',
+            'replacementReason',
+            'replacementDeadlineAt',
+            'replacementCancelledActorUid',
+            'replacementCancelledApplicationId',
+            'updatedAt'
+          ])
+          && request.resource.data.replacementOpen == true
+          && request.resource.data.replacementCancelledActorUid == request.auth.uid
+          && request.resource.data.replacementCancelledApplicationId == briefId + '_' + request.auth.uid;
+      }
       function publishedPublic() {
         return signedIn()
           && resource.data.status == 'published'
@@ -77,9 +99,10 @@ service cloud.firestore {
         && request.resource.data.agencyId == request.auth.uid
         && request.resource.data.status in ['draft', 'published', 'closed']
         && request.resource.data.visibility in ['public', 'network'];
-      allow update: if isAgent()
-        && resource.data.agencyId == request.auth.uid
-        && request.resource.data.agencyId == resource.data.agencyId;
+      allow update: if (isAgent()
+          && resource.data.agencyId == request.auth.uid
+          && request.resource.data.agencyId == resource.data.agencyId)
+        || actorOpensReplacement();
       allow delete: if isAgent()
         && resource.data.agencyId == request.auth.uid;
     }
@@ -94,6 +117,29 @@ service cloud.firestore {
           && unchanged('status')
           && request.resource.data.actorDeleted == true
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['actorDeleted', 'actorDeletedAt']);
+      }
+      function actorCancelsBookedApplication() {
+        return isActor()
+          && resource.data.actorUid == request.auth.uid
+          && resource.data.status == 'booked'
+          && unchanged('agencyId')
+          && unchanged('actorUid')
+          && unchanged('briefId')
+          && request.resource.data.status == 'cancelled'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelReason', 'cancelledAt', 'replacementRequestId', 'replacementDeadlineAt', 'updatedAt']);
+      }
+      function actorAvailableAsReplacement() {
+        return isActor()
+          && resource.data.actorUid == request.auth.uid
+          && resource.data.status in ['pending', 'standby', 'selected', 'rejected']
+          && unchanged('agencyId')
+          && unchanged('actorUid')
+          && unchanged('briefId')
+          && request.resource.data.status == 'replacement_available'
+          && get(/databases/$(database)/documents/briefs/$(resource.data.briefId)).data.replacementOpen == true
+          && request.resource.data.replacementRequestId == get(/databases/$(database)/documents/briefs/$(resource.data.briefId)).data.replacementRequestId
+          && request.resource.data.replacementOriginalStatus == resource.data.status
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'replacementRequestId', 'replacementOriginalStatus', 'replacementAvailableAt', 'updatedAt']);
       }
 
       allow create: if isActor()
@@ -118,9 +164,11 @@ service cloud.firestore {
           && unchanged('agencyId')
           && unchanged('actorUid')
           && unchanged('briefId')
-          && request.resource.data.status in ['pending', 'standby', 'selected', 'booked', 'rejected']
+          && request.resource.data.status in ['pending', 'standby', 'selected', 'booked', 'rejected', 'cancelled', 'replacement_available']
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedAt', 'updatedAt']))
-        || actorHidesApplicationHistory();
+        || actorHidesApplicationHistory()
+        || actorCancelsBookedApplication()
+        || actorAvailableAsReplacement();
       allow delete: if isAgent()
         && resource.data.agencyId == request.auth.uid;
     }
@@ -273,6 +321,9 @@ service cloud.firestore {
           'application_standby',
           'application_rejected',
           'booking_confirmed',
+          'replacement_needed',
+          'replacement_available',
+          'replacement_confirmed',
           'brief_deleted',
           'brief_closed'
         ];
@@ -305,6 +356,26 @@ service cloud.firestore {
           && request.resource.data.deletedFor.hasOnly(resource.data.participantUids)
           && request.resource.data.deletedFor.hasAny([request.auth.uid]);
       }
+      function agentManagesShootCast() {
+        return isAgent()
+          && resource.data.agencyId == request.auth.uid
+          && unchanged('agencyId')
+          && unchanged('agencyName')
+          && unchanged('briefId')
+          && unchanged('briefTitle')
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participantUids', 'actorSummaries', 'lastMessage', 'lastSenderUid', 'lastMessageAt', 'updatedAt', 'readBy', 'deletedFor'])
+          && request.resource.data.participantUids is list
+          && request.resource.data.participantUids.hasAny([request.auth.uid])
+          && request.resource.data.actorSummaries is list
+          && request.resource.data.readBy is list
+          && request.resource.data.readBy.hasOnly(request.resource.data.participantUids)
+          && request.resource.data.deletedFor is list
+          && request.resource.data.deletedFor.hasOnly(request.resource.data.participantUids)
+          && request.resource.data.lastSenderUid == request.auth.uid
+          && request.resource.data.lastMessage is string
+          && request.resource.data.lastMessage.size() > 0
+          && request.resource.data.lastMessage.size() <= 1000;
+      }
 
       allow read: if isShootParticipant();
       allow create: if isAgent()
@@ -313,28 +384,29 @@ service cloud.firestore {
         && request.resource.data.participantUids.hasAny([request.auth.uid])
         && request.resource.data.briefId is string
         && request.resource.data.briefTitle is string;
-      allow update: if isShootParticipant()
-        && unchangedShootPeople()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastMessage', 'lastSenderUid', 'lastMessageAt', 'updatedAt', 'readBy', 'deletedFor'])
-        && (
-          (
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy'])
-            && validShootReadBy()
-          )
-          || (
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deletedFor', 'updatedAt'])
-            && validShootDeletedFor()
-          )
-          || (
-            request.resource.data.lastSenderUid == request.auth.uid
-            && request.resource.data.lastMessage is string
-            && request.resource.data.lastMessage.size() > 0
-            && request.resource.data.lastMessage.size() <= 1000
-            && validShootReadBy()
-            && request.resource.data.deletedFor is list
-            && request.resource.data.deletedFor.size() == 0
-          )
-        );
+      allow update: if agentManagesShootCast()
+        || (isShootParticipant()
+          && unchangedShootPeople()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastMessage', 'lastSenderUid', 'lastMessageAt', 'updatedAt', 'readBy', 'deletedFor'])
+          && (
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy'])
+              && validShootReadBy()
+            )
+            || (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deletedFor', 'updatedAt'])
+              && validShootDeletedFor()
+            )
+            || (
+              request.resource.data.lastSenderUid == request.auth.uid
+              && request.resource.data.lastMessage is string
+              && request.resource.data.lastMessage.size() > 0
+              && request.resource.data.lastMessage.size() <= 1000
+              && validShootReadBy()
+              && request.resource.data.deletedFor is list
+              && request.resource.data.deletedFor.size() == 0
+            )
+          ));
       allow delete: if false;
 
       match /actorZCards/{actorUid} {

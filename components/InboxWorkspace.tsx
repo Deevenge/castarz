@@ -26,6 +26,9 @@ const tone: Record<NotificationType, string> = {
   booking_confirmed: "bg-emerald-100 text-emerald-700",
   brief_deleted: "bg-red-50 text-red-700",
   brief_closed: "bg-brand-navy text-brand-cyan",
+  replacement_needed: "bg-red-50 text-red-700",
+  replacement_available: "bg-brand-ice text-brand-blue",
+  replacement_confirmed: "bg-emerald-100 text-emerald-700",
 };
 
 const icon: Record<NotificationType, typeof Bell> = {
@@ -39,6 +42,9 @@ const icon: Record<NotificationType, typeof Bell> = {
   booking_confirmed: CheckCircle2,
   brief_deleted: X,
   brief_closed: Handshake,
+  replacement_needed: Bell,
+  replacement_available: Sparkles,
+  replacement_confirmed: CheckCircle2,
 };
 
 const quickPrompts = [

@@ -27,6 +27,12 @@ export interface AgentBrief {
   whatsappLink: string;
   shootRoomId: string;
   finalCommsMode: string;
+  replacementOpen: boolean;
+  replacementRequestId: string;
+  replacementReason: string;
+  replacementDeadlineAt?: Timestamp;
+  replacementCancelledActorUid: string;
+  replacementCancelledApplicationId: string;
   createdAt?: Timestamp;
 }
 
@@ -55,6 +61,12 @@ export function briefFromDocument(id: string, data: DocumentData): AgentBrief {
     whatsappLink: typeof data.whatsappLink === "string" ? data.whatsappLink : "",
     shootRoomId: typeof data.shootRoomId === "string" ? data.shootRoomId : "",
     finalCommsMode: typeof data.finalCommsMode === "string" ? data.finalCommsMode : "",
+    replacementOpen: data.replacementOpen === true,
+    replacementRequestId: typeof data.replacementRequestId === "string" ? data.replacementRequestId : "",
+    replacementReason: typeof data.replacementReason === "string" ? data.replacementReason : "",
+    replacementDeadlineAt: data.replacementDeadlineAt,
+    replacementCancelledActorUid: typeof data.replacementCancelledActorUid === "string" ? data.replacementCancelledActorUid : "",
+    replacementCancelledApplicationId: typeof data.replacementCancelledApplicationId === "string" ? data.replacementCancelledApplicationId : "",
     createdAt: data.createdAt,
   };
 }

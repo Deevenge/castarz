@@ -3,7 +3,7 @@
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import Image from "next/image";
 import Link from "next/link";
-import { CheckCircle2, Clock3, Edit3, Globe2, ImagePlus, LoaderCircle, LockKeyhole, MapPin, MessageCircle, Plus, Send, Trash2, UsersRound, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, Edit3, Globe2, ImagePlus, LoaderCircle, LockKeyhole, MapPin, MessageCircle, Plus, Radio, Send, ShieldCheck, Trash2, UsersRound, X } from "lucide-react";
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from "react";
 import { AgentApplicationsWorkspace } from "@/components/AgentApplicationsWorkspace";
 import { PhotoLightbox } from "@/components/ProfileChrome";
@@ -32,7 +32,11 @@ type Application = {
   id: string;
   briefId: string;
   actorUid: string;
-  status: "pending" | "standby" | "selected" | "booked" | "rejected";
+  status: "pending" | "standby" | "selected" | "booked" | "rejected" | "cancelled" | "replacement_available";
+  cancelReason: string;
+  replacementRequestId: string;
+  replacementOriginalStatus: string;
+  replacementAvailableAtMs: number;
 };
 
 const blank: BriefForm = {
@@ -86,6 +90,10 @@ export default function BriefsPage() {
         briefId: String(item.data().briefId ?? ""),
         actorUid: String(item.data().actorUid ?? ""),
         status: item.data().status as Application["status"],
+        cancelReason: typeof item.data().cancelReason === "string" ? item.data().cancelReason : "",
+        replacementRequestId: typeof item.data().replacementRequestId === "string" ? item.data().replacementRequestId : "",
+        replacementOriginalStatus: typeof item.data().replacementOriginalStatus === "string" ? item.data().replacementOriginalStatus : "",
+        replacementAvailableAtMs: item.data().replacementAvailableAt?.toMillis?.() ?? 0,
       })));
     });
     return () => {
@@ -288,14 +296,16 @@ export default function BriefsPage() {
 
       {section === "briefs" && <section className="mt-7 space-y-4">
         {briefs.map((brief) => (
-          <BriefCard
-            key={brief.id}
-            brief={brief}
-            applications={applicationsByBrief[brief.id] ?? []}
-            onClose={() => setClosingBrief(brief)}
-            onEdit={() => startEditBrief(brief)}
-            onDelete={() => setDeletingBrief(brief)}
-          />
+            <BriefCard
+              key={brief.id}
+              brief={brief}
+              applications={applicationsByBrief[brief.id] ?? []}
+              senderUid={user?.uid ?? ""}
+              onClose={() => setClosingBrief(brief)}
+              onEdit={() => startEditBrief(brief)}
+              onDelete={() => setDeletingBrief(brief)}
+              onDone={setNotice}
+            />
         ))}
         {!briefs.length && <div className="rounded-3xl border-2 border-dashed border-brand-silver bg-white p-10 text-center"><Plus className="mx-auto size-8 text-brand-blue" /><p className="mt-4 font-bold">Your brief board is clear.</p></div>}
       </section>}
@@ -328,10 +338,11 @@ export default function BriefsPage() {
   );
 }
 
-function BriefCard({ brief, applications, onClose, onEdit, onDelete }: { brief: AgentBrief; applications: Application[]; onClose: () => void; onEdit: () => void; onDelete: () => void }) {
+function BriefCard({ brief, applications, senderUid, onClose, onEdit, onDelete, onDone }: { brief: AgentBrief; applications: Application[]; senderUid: string; onClose: () => void; onEdit: () => void; onDelete: () => void; onDone: (message: string) => void }) {
   const appliedCount = applications.length;
   const shortlistedCount = applications.filter((application) => application.status === "standby" || application.status === "selected" || application.status === "booked").length;
   const selectedCount = applications.filter((application) => application.status === "selected" || application.status === "booked").length;
+  const replacementCount = applications.filter((application) => application.status === "replacement_available").length;
   const totalLabel = brief.talentNeeded ? `${brief.talentNeeded} ${brief.talentNeeded === 1 ? "role" : "roles"} requested · ${appliedCount} applied` : `${appliedCount} applied`;
   const statusTone = brief.status === "closed" ? "bg-slate-100 text-slate-600" : brief.status === "draft" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700";
 
@@ -357,6 +368,7 @@ function BriefCard({ brief, applications, onClose, onEdit, onDelete }: { brief: 
         <span className="flex items-center gap-1"><UsersRound className="size-4 text-brand-blue" />{totalLabel}</span>
         <span className="flex items-center gap-1"><Clock3 className="size-4 text-brand-blue" />{shortlistedCount} shortlisted</span>
         <span className="flex items-center gap-1"><CheckCircle2 className="size-4 text-brand-blue" />{selectedCount} selected</span>
+        {brief.replacementOpen && <span className="flex items-center gap-1 text-red-700"><Radio className="size-4" />{replacementCount} replacement responses</span>}
       </div>
       <div className="mt-5 rounded-2xl border border-brand-silver/70 bg-brand-ice/45 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -386,6 +398,7 @@ function BriefCard({ brief, applications, onClose, onEdit, onDelete }: { brief: 
           {brief.whatsappLink && <a href={brief.whatsappLink} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 font-bold text-brand-blue"><MessageCircle className="size-4" />Open WhatsApp group</a>}
         </div>
       )}
+      <ReplacementPool brief={brief} applications={applications} senderUid={senderUid} onDone={onDone} />
       <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
         <button type="button" onClick={onEdit} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-ice px-4 text-sm font-bold text-brand-navy hover:bg-brand-cyan/20">
           <Edit3 className="size-4" />Edit brief
@@ -421,6 +434,239 @@ function zCardSnapshotFromActor(actor: ActorProfile): ActorZCardSnapshot {
     credits: actor.credits.slice(0, 8),
     albums: actor.albums,
   };
+}
+
+function ReplacementPool({ brief, applications, senderUid, onDone }: { brief: AgentBrief; applications: Application[]; senderUid: string; onDone: (message: string) => void }) {
+  const cancelledApplication = applications.find((application) => application.id === brief.replacementCancelledApplicationId) ?? applications.find((application) => application.status === "cancelled");
+  const candidates = useMemo(() => applications
+    .filter((application) => application.status === "replacement_available")
+    .sort((left, right) => (left.replacementAvailableAtMs || Number.MAX_SAFE_INTEGER) - (right.replacementAvailableAtMs || Number.MAX_SAFE_INTEGER)), [applications]);
+  const alertableApplications = applications.filter((application) => (
+    application.actorUid !== brief.replacementCancelledActorUid
+    && application.status !== "booked"
+    && application.status !== "cancelled"
+    && application.status !== "replacement_available"
+  ));
+  const visible = brief.replacementOpen || Boolean(cancelledApplication) || candidates.length > 0;
+  const actorIds = useMemo(() => Array.from(new Set([
+    ...candidates.map((application) => application.actorUid),
+    ...(cancelledApplication ? [cancelledApplication.actorUid] : []),
+  ])), [candidates, cancelledApplication]);
+  const actorIdsKey = actorIds.join("|");
+  const [actorDetails, setActorDetails] = useState<Record<string, ActorZCardSnapshot>>({});
+  const [working, setWorking] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    void Promise.all(actorIds.map(async (actorUid) => {
+      const snapshot = await getDoc(doc(db, "actors", actorUid));
+      return [actorUid, zCardSnapshotFromActor(normalizeActorProfile(snapshot.data()))] as const;
+    })).then((entries) => {
+      if (active) setActorDetails(Object.fromEntries(entries));
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [actorIds, actorIdsKey]);
+
+  if (!visible) return null;
+
+  async function broadcastReplacementAlert() {
+    if (!senderUid || !alertableApplications.length) return;
+    setWorking("broadcast");
+    setError("");
+    try {
+      await Promise.all(alertableApplications.map((application) => notifyQuietly({
+        recipientUid: application.actorUid,
+        senderUid,
+        type: "replacement_needed",
+        title: `Emergency replacement: ${brief.title}`,
+        body: `${brief.agencyName} needs a replacement for ${brief.title}${brief.replacementDeadlineAt ? ` by ${deadlineLabel(brief.replacementDeadlineAt)}` : ""}. Open My Applications and tap “I’m available” if you can make it.`,
+        href: "/actor/briefs",
+      })));
+      await updateDoc(doc(db, "briefs", brief.id), { replacementAlertedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      onDone(`Emergency replacement alert sent to ${alertableApplications.length} applicant${alertableApplications.length === 1 ? "" : "s"}.`);
+    } catch {
+      setError("We could not send the replacement alert. Please try again.");
+    } finally {
+      setWorking("");
+    }
+  }
+
+  async function confirmReplacement(application: Application) {
+    if (!senderUid) return;
+    setWorking(application.id);
+    setError("");
+    try {
+      const actorSnapshot = await getDoc(doc(db, "actors", application.actorUid));
+      const actor = zCardSnapshotFromActor(normalizeActorProfile(actorSnapshot.data()));
+      const batch = writeBatch(db);
+      const usingShootRoom = Boolean(brief.shootRoomId);
+
+      batch.update(doc(db, "applications", application.id), { status: "booked", decidedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      batch.update(doc(db, "briefs", brief.id), {
+        replacementOpen: false,
+        replacementSelectedActorUid: application.actorUid,
+        replacementFulfilledAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      batch.set(doc(db, "bookings", application.id), {
+        applicationId: application.id,
+        briefId: application.briefId,
+        actorUid: application.actorUid,
+        agencyId: senderUid,
+        agencyName: brief.agencyName,
+        actorName: actor.name,
+        briefTitle: brief.title,
+        location: brief.location,
+        shootDate: `${briefDateLabel(brief)} · ${briefCallTimeLabel(brief)}`,
+        shootDateTime: brief.shootDateTime,
+        callTime: briefCallTimeLabel(brief),
+        rate: brief.rate,
+        status: "confirmed",
+        confirmedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+
+      if (usingShootRoom) {
+        const roomRef = doc(db, "shootRooms", brief.shootRoomId);
+        const roomSnapshot = await getDoc(roomRef);
+        const roomData = roomSnapshot.data() ?? {};
+        const participantUids = Array.isArray(roomData.participantUids) ? roomData.participantUids.filter((uid): uid is string => typeof uid === "string") : [senderUid];
+        const actorSummaries = Array.isArray(roomData.actorSummaries) ? roomData.actorSummaries.filter((summary: { uid?: unknown }) => typeof summary.uid === "string" && summary.uid !== brief.replacementCancelledActorUid && summary.uid !== application.actorUid) : [];
+        const nextParticipants = Array.from(new Set([...participantUids.filter((uid) => uid !== brief.replacementCancelledActorUid), senderUid, application.actorUid]));
+        const replacementSummary = { uid: application.actorUid, ...actor };
+        batch.set(roomRef, {
+          participantUids: nextParticipants,
+          actorSummaries: [...actorSummaries, replacementSummary],
+          readBy: [senderUid],
+          deletedFor: [],
+          lastMessage: `${actor.name} has been confirmed as the replacement for ${brief.title}.`,
+          lastSenderUid: senderUid,
+          lastMessageAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+        batch.set(doc(db, "shootRooms", brief.shootRoomId, "actorZCards", application.actorUid), replacementSummary, { merge: true });
+      }
+
+      await batch.commit();
+      await notifyQuietly({
+        recipientUid: application.actorUid,
+        senderUid,
+        type: "replacement_confirmed",
+        title: `Replacement confirmed: ${brief.title}`,
+        body: usingShootRoom
+          ? `You’ve been confirmed as the replacement for ${brief.title}. Final details are in your CASTARZ shoot room.`
+          : `You’ve been confirmed as the replacement for ${brief.title}. Final details are in My Applications${brief.whatsappLink ? " with the WhatsApp group link" : ""}.`,
+        href: usingShootRoom ? `/actor/inbox?shoot=${brief.shootRoomId}` : "/actor/briefs",
+      });
+      onDone(`${actor.name} was confirmed as the replacement for ${brief.title}.`);
+    } catch {
+      setError("We could not confirm this replacement. Please try again.");
+    } finally {
+      setWorking("");
+    }
+  }
+
+  return (
+    <section className="mt-5 rounded-2xl border border-red-100 bg-red-50/70 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="flex items-center gap-2 text-sm font-black uppercase tracking-[0.14em] text-red-700"><AlertTriangle className="size-4" />Replacement pool</p>
+          <h3 className="mt-1 font-bold text-brand-navy">{brief.replacementOpen ? `1 replacement needed for ${brief.title}` : "Replacement request handled"}</h3>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            {brief.replacementReason ? `Reason: ${brief.replacementReason}. ` : ""}
+            {brief.replacementDeadlineAt ? `Need replacement by ${deadlineLabel(brief.replacementDeadlineAt)}.` : "Emergency response queue is open."}
+          </p>
+        </div>
+        {brief.replacementOpen && (
+          <button type="button" disabled={working === "broadcast" || !alertableApplications.length} onClick={() => void broadcastReplacementAlert()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-60">
+            {working === "broadcast" ? <LoaderCircle className="size-4 animate-spin" /> : <Radio className="size-4" />}
+            Alert pool
+          </button>
+        )}
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <MatchChip label="Age range" value={brief.ageRange || "open"} />
+        <MatchChip label="Wardrobe" value={brief.wardrobe ? "brief supplied" : "not specified"} />
+        <MatchChip label="Location" value={brief.location || "to confirm"} />
+      </div>
+      {cancelledApplication && (
+        <div className="mt-4 rounded-xl bg-white p-3 text-sm font-semibold text-slate-600 ring-1 ring-red-100">
+          Cancelled actor: <span className="text-brand-navy">{actorDetails[cancelledApplication.actorUid]?.name || cancelledApplication.actorUid}</span>{cancelledApplication.cancelReason ? ` · ${cancelledApplication.cancelReason}` : ""}
+        </div>
+      )}
+      <div className="mt-4 space-y-3">
+        {candidates.length ? candidates.map((application, index) => {
+          const actor = actorDetails[application.actorUid];
+          const score = replacementReliability(actor);
+          return (
+            <div key={application.id} className="grid gap-3 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-red-100 sm:grid-cols-[1fr_auto]">
+              <div className="flex min-w-0 gap-3">
+                <div className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-navy text-xs font-black text-brand-cyan">
+                  {actor?.photo ? <Image src={actor.photo} alt="" fill unoptimized className="object-cover" /> : (actor?.name || "A").slice(0, 2).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate font-bold text-brand-navy">{index + 1}. {actor?.name || "Loading actor..."}</p>
+                  <p className="mt-0.5 text-xs font-semibold text-slate-500">Responded {application.replacementAvailableAtMs ? timeAgo(application.replacementAvailableAtMs) : "just now"} · originally {applicationStageLabel(application.replacementOriginalStatus || "applicant")}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-black text-emerald-700"><ShieldCheck className="size-3.5" />Reliability {score}</span>
+                    <span className="rounded-full bg-brand-ice px-2.5 py-1 text-xs font-black text-brand-navy">Age {actor?.ageRange || "not listed"}</span>
+                    <Link href={`/agent/talent/${application.actorUid}`} className="rounded-full bg-white px-2.5 py-1 text-xs font-black text-brand-blue ring-1 ring-brand-silver/70 hover:bg-brand-ice">Review z-card</Link>
+                  </div>
+                </div>
+              </div>
+              <button type="button" disabled={working === application.id || !brief.replacementOpen} onClick={() => void confirmReplacement(application)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand-navy px-4 text-sm font-bold text-white hover:bg-brand-blue disabled:opacity-60">
+                {working === application.id ? <LoaderCircle className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                Confirm replacement
+              </button>
+            </div>
+          );
+        }) : (
+          <p className="rounded-xl border border-dashed border-red-200 bg-white p-4 text-sm font-semibold text-slate-500">No replacement responses yet. Send the emergency alert to shortlisted and applied actors, then responses will queue here by fastest first.</p>
+        )}
+      </div>
+      {error && <p className="mt-4 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-red-700">{error}</p>}
+    </section>
+  );
+}
+
+function MatchChip({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-brand-navy ring-1 ring-red-100">
+      {label}: <span className="text-slate-600">{value}</span>
+    </span>
+  );
+}
+
+function deadlineLabel(value: AgentBrief["replacementDeadlineAt"]) {
+  const date = value?.toDate?.();
+  if (!date) return "the agency deadline";
+  return new Intl.DateTimeFormat("en-ZA", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" }).format(date);
+}
+
+function replacementReliability(actor?: ActorZCardSnapshot) {
+  if (!actor) return 70;
+  const profileDepth = [actor.photo, actor.bio, actor.ageRange, actor.heightCm, actor.hairColor, actor.eyeColor].filter(Boolean).length;
+  const creditDepth = Math.min(actor.credits.length, 5);
+  return Math.min(98, 70 + profileDepth * 3 + creditDepth * 2);
+}
+
+function timeAgo(ms: number) {
+  const minutes = Math.max(0, Math.round((Date.now() - ms) / 60000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  return `${hours} hr${hours === 1 ? "" : "s"} ago`;
+}
+
+function applicationStageLabel(status: string) {
+  return status === "standby" || status === "selected"
+    ? "shortlisted"
+    : status === "rejected"
+      ? "not selected"
+      : status === "pending"
+        ? "under review"
+        : status || "applicant";
 }
 
 function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: { brief: AgentBrief; applications: Application[]; senderUid: string; onClose: () => void; onDone: (message: string) => void }) {

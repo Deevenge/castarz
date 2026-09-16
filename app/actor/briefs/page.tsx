@@ -1,19 +1,25 @@
 "use client";
 
-import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
-import { BriefcaseBusiness, CalendarDays, CheckCircle2, Clock3, LoaderCircle, MapPin, MessageCircle, Trash2, WalletCards, X, XCircle } from "lucide-react";
+import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
+import { AlertTriangle, BriefcaseBusiness, CalendarDays, CheckCircle2, Clock3, LoaderCircle, MapPin, MessageCircle, Radio, Trash2, WalletCards, X, XCircle } from "lucide-react";
 import Link from "next/link";
 import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { briefFromDocument, type AgentBrief } from "@/lib/agent-data";
 import { db } from "@/lib/firebase";
+import { notifyQuietly } from "@/lib/notify";
+
+type ApplicationStatus = "pending" | "standby" | "selected" | "booked" | "rejected" | "cancelled" | "replacement_available";
 
 type Application = {
   id: string;
   briefId: string;
   agencyId: string;
-  status: "pending" | "standby" | "selected" | "booked" | "rejected";
+  status: ApplicationStatus;
   actorDeleted: boolean;
+  cancelReason: string;
+  replacementRequestId: string;
+  replacementOriginalStatus: ApplicationStatus | "";
 };
 
 type Booking = {
@@ -26,6 +32,15 @@ type Booking = {
 
 type JourneyTab = "active" | "booked" | "notSelected";
 
+const replacementCancelReasons = [
+  "No longer available",
+  "Transport issue",
+  "Illness",
+  "No response",
+  "Agency removed",
+  "Other",
+];
+
 export default function MyApplicationsPage() {
   const { user } = useAuth();
   const [applications, setApplications] = useState<Application[]>([]);
@@ -33,20 +48,30 @@ export default function MyApplicationsPage() {
   const [bookings, setBookings] = useState<Record<string, Booking>>({});
   const [tab, setTab] = useState<JourneyTab>("active");
   const [deleteTarget, setDeleteTarget] = useState<Application | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<Application | null>(null);
   const [hiding, setHiding] = useState(false);
+  const [replacementWorkingId, setReplacementWorkingId] = useState("");
+  const [notice, setNotice] = useState("");
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFired = useRef(false);
 
   useEffect(() => {
     if (!user) return;
     const stopApps = onSnapshot(query(collection(db, "applications"), where("actorUid", "==", user.uid)), async (snapshot) => {
-      const apps = snapshot.docs.map((item) => ({
-        id: item.id,
-        briefId: item.data().briefId as string,
-        agencyId: item.data().agencyId as string,
-        status: item.data().status as Application["status"],
-        actorDeleted: item.data().actorDeleted === true,
-      }));
+      const apps: Application[] = snapshot.docs.map((item) => {
+        const status = item.data().status;
+        const replacementOriginalStatus = item.data().replacementOriginalStatus;
+        return {
+          id: item.id,
+          briefId: item.data().briefId as string,
+          agencyId: item.data().agencyId as string,
+          status: isApplicationStatus(status) ? status : "pending",
+          actorDeleted: item.data().actorDeleted === true,
+          cancelReason: typeof item.data().cancelReason === "string" ? item.data().cancelReason : "",
+          replacementRequestId: typeof item.data().replacementRequestId === "string" ? item.data().replacementRequestId : "",
+          replacementOriginalStatus: isApplicationStatus(replacementOriginalStatus) ? replacementOriginalStatus : "",
+        };
+      });
       setApplications(apps);
       const pairs = await Promise.all(apps.map(async (application) => {
         const brief = await getDoc(doc(db, "briefs", application.briefId));
@@ -73,9 +98,9 @@ export default function MyApplicationsPage() {
   }, [user]);
 
   const visibleApplications = useMemo(() => applications.filter((application) => !application.actorDeleted), [applications]);
-  const activeApplications = useMemo(() => visibleApplications.filter((application) => application.status === "pending" || application.status === "standby" || application.status === "selected"), [visibleApplications]);
+  const activeApplications = useMemo(() => visibleApplications.filter((application) => application.status === "pending" || application.status === "standby" || application.status === "selected" || application.status === "replacement_available"), [visibleApplications]);
   const bookedApplications = useMemo(() => visibleApplications.filter((application) => application.status === "booked"), [visibleApplications]);
-  const notSelectedApplications = useMemo(() => visibleApplications.filter((application) => application.status === "rejected"), [visibleApplications]);
+  const notSelectedApplications = useMemo(() => visibleApplications.filter((application) => application.status === "rejected" || application.status === "cancelled"), [visibleApplications]);
   const displayedApplications = tab === "booked" ? bookedApplications : tab === "notSelected" ? notSelectedApplications : activeApplications;
 
   function startLongPress(action: () => void) {
@@ -120,6 +145,82 @@ export default function MyApplicationsPage() {
     }
   }
 
+  async function cancelBookingForReplacement(application: Application, reason: string) {
+    if (!user) return;
+    const brief = briefs[application.briefId];
+    const finalReason = reason.trim();
+    if (!brief || !finalReason) return;
+    const replacementRequestId = `replacement_${application.id}_${Date.now()}`;
+    const deadline = defaultReplacementDeadline();
+    setReplacementWorkingId(application.id);
+    setNotice("");
+    try {
+      const batch = writeBatch(db);
+      batch.update(doc(db, "applications", application.id), {
+        status: "cancelled",
+        cancelReason: finalReason,
+        cancelledAt: serverTimestamp(),
+        replacementRequestId,
+        replacementDeadlineAt: deadline,
+        updatedAt: serverTimestamp(),
+      });
+      batch.update(doc(db, "briefs", application.briefId), {
+        replacementOpen: true,
+        replacementRequestId,
+        replacementReason: finalReason,
+        replacementDeadlineAt: deadline,
+        replacementCancelledActorUid: user.uid,
+        replacementCancelledApplicationId: application.id,
+        updatedAt: serverTimestamp(),
+      });
+      await batch.commit();
+      await notifyQuietly({
+        recipientUid: application.agencyId,
+        senderUid: user.uid,
+        type: "replacement_needed",
+        title: `Replacement needed: ${brief.title}`,
+        body: `A booked actor cancelled ${brief.title}. Reason: ${finalReason}. Replacement needed by ${formatDate(deadline)}.`,
+        href: "/agent/briefs",
+      });
+      setCancelTarget(null);
+      setNotice("Your agency has been alerted and a replacement slot is open.");
+    } catch {
+      setNotice("We could not request a replacement. Please try again.");
+    } finally {
+      setReplacementWorkingId("");
+    }
+  }
+
+  async function offerAsReplacement(application: Application) {
+    if (!user) return;
+    const brief = briefs[application.briefId];
+    if (!brief?.replacementOpen || !brief.replacementRequestId) return;
+    setReplacementWorkingId(application.id);
+    setNotice("");
+    try {
+      await updateDoc(doc(db, "applications", application.id), {
+        status: "replacement_available",
+        replacementRequestId: brief.replacementRequestId,
+        replacementOriginalStatus: application.status,
+        replacementAvailableAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      await notifyQuietly({
+        recipientUid: application.agencyId,
+        senderUid: user.uid,
+        type: "replacement_available",
+        title: `Available as replacement: ${brief.title}`,
+        body: `An actor has confirmed they are available as an emergency replacement for ${brief.title}.`,
+        href: "/agent/briefs",
+      });
+      setNotice("You are in the replacement queue. The agency will confirm if they choose you.");
+    } catch {
+      setNotice("We could not send your availability. Please try again.");
+    } finally {
+      setReplacementWorkingId("");
+    }
+  }
+
   return (
     <div className="mx-auto max-w-4xl">
       <header>
@@ -132,11 +233,22 @@ export default function MyApplicationsPage() {
         <JourneyTabButton icon={CheckCircle2} label="Booked" count={bookedApplications.length} active={tab === "booked"} choose={() => setTab("booked")} />
         <JourneyTabButton icon={XCircle} label="Not selected" count={notSelectedApplications.length} active={tab === "notSelected"} choose={() => setTab("notSelected")} />
       </nav>
+      {notice && <p className="mt-5 flex items-center gap-2 rounded-2xl bg-brand-ice px-4 py-3 text-sm font-bold text-brand-navy"><Radio className="size-4 text-brand-blue" />{notice}</p>}
       <section className="mt-7 space-y-4">
         {displayedApplications.map((application) => {
           const brief = briefs[application.briefId];
           const booking = bookings[application.id];
           const showCastComms = application.status === "booked" && brief?.status === "closed" && (brief.closeMessage || brief.whatsappLink || brief.shootRoomId);
+          const canRequestReplacement = application.status === "booked" && brief?.status === "closed";
+          const canOfferReplacement = Boolean(
+            user &&
+            brief?.replacementOpen &&
+            brief.replacementRequestId &&
+            brief.replacementCancelledActorUid !== user.uid &&
+            application.status !== "booked" &&
+            application.status !== "cancelled" &&
+            application.status !== "replacement_available",
+          );
 
           return (
             <article
@@ -182,6 +294,54 @@ export default function MyApplicationsPage() {
                       </div>
                     </div>
                   )}
+
+                  {canRequestReplacement && (
+                    <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="flex items-center gap-2 font-bold text-red-800"><AlertTriangle className="size-4" />Can’t make this shoot?</p>
+                          <p className="mt-1 text-sm leading-6 text-red-700">Cancel with a reason and CASTARZ will open an emergency replacement slot for your agency.</p>
+                        </div>
+                        <button
+                          type="button"
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={() => setCancelTarget(application)}
+                          className="inline-flex min-h-11 items-center rounded-xl bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700"
+                        >
+                          Request replacement
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {canOfferReplacement && (
+                    <div className="mt-4 rounded-2xl border border-brand-cyan/40 bg-brand-ice p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="flex items-center gap-2 font-bold text-brand-navy"><Radio className="size-4 text-brand-blue" />Emergency replacement slot</p>
+                          <p className="mt-1 text-sm leading-6 text-slate-600">
+                            {brief?.title || "This brief"} needs a replacement{brief?.replacementDeadlineAt ? ` by ${formatTimestamp(brief.replacementDeadlineAt)}` : ""}. Match notes: {brief?.ageRange || "age range open"} · {brief?.location || "location to confirm"}.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={replacementWorkingId === application.id}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={() => void offerAsReplacement(application)}
+                          className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-blue px-4 text-sm font-bold text-white hover:bg-brand-navy disabled:opacity-60"
+                        >
+                          {replacementWorkingId === application.id ? <LoaderCircle className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                          I’m available
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {application.status === "replacement_available" && (
+                    <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+                      You’re in the emergency replacement queue. The agency will confirm the replacement booking if they select you.
+                    </div>
+                  )}
                 </div>
                 <Status status={application.status} />
               </div>
@@ -206,6 +366,15 @@ export default function MyApplicationsPage() {
           confirm={() => void hideJourneyItem()}
         />
       )}
+      {cancelTarget && (
+        <CancelReplacementDialog
+          application={cancelTarget}
+          title={briefs[cancelTarget.briefId]?.title || bookings[cancelTarget.id]?.briefTitle || "this shoot"}
+          working={replacementWorkingId === cancelTarget.id}
+          close={() => setCancelTarget(null)}
+          confirm={(reason) => void cancelBookingForReplacement(cancelTarget, reason)}
+        />
+      )}
     </div>
   );
 }
@@ -221,14 +390,18 @@ function JourneyTabButton({ icon: Icon, label, count, active, choose }: { icon: 
 }
 
 function Status({ status }: { status: Application["status"] }) {
-  const style = status === "booked" ? "bg-emerald-50 text-emerald-700" : status === "rejected" ? "bg-red-50 text-red-700" : status === "standby" || status === "selected" ? "bg-amber-50 text-amber-700" : "bg-brand-ice text-brand-navy";
-  const Icon = status === "booked" ? CheckCircle2 : status === "rejected" ? XCircle : Clock3;
-  return <span className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-sm font-bold ${style}`}><Icon className="size-4" />{status === "pending" ? "Under review" : status === "standby" || status === "selected" ? "Shortlisted" : status === "booked" ? "Booked" : "Not selected"}</span>;
+  const style = status === "booked" ? "bg-emerald-50 text-emerald-700" : status === "rejected" || status === "cancelled" ? "bg-red-50 text-red-700" : status === "standby" || status === "selected" ? "bg-amber-50 text-amber-700" : status === "replacement_available" ? "bg-brand-ice text-brand-blue" : "bg-brand-ice text-brand-navy";
+  const Icon = status === "booked" ? CheckCircle2 : status === "rejected" || status === "cancelled" ? XCircle : status === "replacement_available" ? Radio : Clock3;
+  return <span className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-sm font-bold ${style}`}><Icon className="size-4" />{statusLabel(status)}</span>;
 }
 
 function statusCopy(status: Application["status"]) {
   return status === "booked"
     ? "Congratulations, your agency has booked you for this brief. More final details should follow in less than 24hrs, so stay on the lookout for the WhatsApp link or production message."
+    : status === "cancelled"
+      ? "You cancelled this booking and your agency was alerted to find a replacement."
+      : status === "replacement_available"
+        ? "You have raised your hand as an emergency replacement. The agency will confirm if they select you."
     : status === "rejected"
       ? "The agency has completed this selection. Keep your profile current for the next opportunity."
       : status === "standby" || status === "selected"
@@ -280,5 +453,85 @@ function DeleteJourneyDialog({ application, title, hiding, close, confirm }: { a
 }
 
 function statusLabel(status: Application["status"]) {
-  return status === "pending" ? "Under review" : status === "standby" || status === "selected" ? "Shortlisted" : status === "booked" ? "Booked" : "Not selected";
+  return status === "pending"
+    ? "Under review"
+    : status === "standby" || status === "selected"
+      ? "Shortlisted"
+      : status === "booked"
+        ? "Booked"
+        : status === "cancelled"
+          ? "Cancelled"
+          : status === "replacement_available"
+            ? "Available"
+            : "Not selected";
+}
+
+function isApplicationStatus(value: unknown): value is ApplicationStatus {
+  return value === "pending"
+    || value === "standby"
+    || value === "selected"
+    || value === "booked"
+    || value === "rejected"
+    || value === "cancelled"
+    || value === "replacement_available";
+}
+
+function defaultReplacementDeadline() {
+  const deadline = new Date();
+  deadline.setHours(18, 0, 0, 0);
+  if (deadline.getTime() <= Date.now()) deadline.setTime(Date.now() + 2 * 60 * 60 * 1000);
+  return deadline;
+}
+
+function formatDate(date: Date) {
+  return new Intl.DateTimeFormat("en-ZA", { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function formatTimestamp(value: AgentBrief["replacementDeadlineAt"]) {
+  const date = value?.toDate?.();
+  return date ? formatDate(date) : "the agency deadline";
+}
+
+function CancelReplacementDialog({ application, title, working, close, confirm }: { application: Application; title: string; working: boolean; close: () => void; confirm: (reason: string) => void }) {
+  const [reason, setReason] = useState("");
+  const [customReason, setCustomReason] = useState("");
+  const finalReason = reason === "Other" ? customReason.trim() : reason;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-brand-navy/55 p-0 backdrop-blur-sm sm:items-center sm:p-6">
+      <section className="w-full max-w-lg rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-red-600">Request replacement</p>
+            <h2 className="mt-1 truncate text-xl font-bold text-brand-navy">{title}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">This cancels your booking, alerts the agency, and opens a replacement pool. Please give a clear reason.</p>
+          </div>
+          <button type="button" onClick={close} className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-ice text-brand-navy hover:bg-slate-100" aria-label="Close dialog">
+            <X className="size-5" />
+          </button>
+        </div>
+        <div className="mt-5 flex flex-wrap gap-2">
+          {replacementCancelReasons.map((item) => (
+            <button key={item} type="button" onClick={() => setReason(item)} className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${reason === item ? "bg-brand-navy text-white" : "bg-brand-ice text-brand-navy hover:bg-brand-cyan/20"}`}>
+              {item}
+            </button>
+          ))}
+        </div>
+        {reason === "Other" && (
+          <label className="mt-4 block">
+            <span className="mb-2 block text-sm font-bold text-slate-700">Reason</span>
+            <textarea value={customReason} onChange={(event) => setCustomReason(event.target.value)} rows={3} placeholder="Briefly explain why you need to cancel." className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
+          </label>
+        )}
+        <div className="mt-6 grid grid-cols-2 gap-3">
+          <button type="button" onClick={close} className="min-h-12 rounded-xl border border-slate-300 font-bold text-slate-600 hover:bg-slate-50">Keep booking</button>
+          <button type="button" disabled={working || !finalReason} onClick={() => confirm(finalReason)} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-red-600 font-bold text-white hover:bg-red-700 disabled:opacity-60">
+            {working ? <LoaderCircle className="size-4 animate-spin" /> : <AlertTriangle className="size-4" />}
+            {working ? "Opening slot..." : "Open replacement"}
+          </button>
+        </div>
+        <p className="mt-3 text-xs font-semibold text-slate-500">Application record: {application.id}</p>
+      </section>
+    </div>
+  );
 }
