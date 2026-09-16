@@ -3,11 +3,11 @@
 import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import { AlertTriangle, BriefcaseBusiness, CalendarDays, CheckCircle2, Clock3, LoaderCircle, MapPin, MessageCircle, Radio, Trash2, WalletCards, X, XCircle } from "lucide-react";
 import Link from "next/link";
-import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { briefFromDocument, type AgentBrief } from "@/lib/agent-data";
 import { db } from "@/lib/firebase";
-import { notifyQuietly } from "@/lib/notify";
+import { notifyQuietly, sendNotification } from "@/lib/notify";
 
 type ApplicationStatus = "pending" | "standby" | "selected" | "booked" | "rejected" | "cancelled" | "replacement_available";
 
@@ -52,8 +52,6 @@ export default function MyApplicationsPage() {
   const [hiding, setHiding] = useState(false);
   const [replacementWorkingId, setReplacementWorkingId] = useState("");
   const [notice, setNotice] = useState("");
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressFired = useRef(false);
 
   useEffect(() => {
     if (!user) return;
@@ -102,34 +100,6 @@ export default function MyApplicationsPage() {
   const bookedApplications = useMemo(() => visibleApplications.filter((application) => application.status === "booked"), [visibleApplications]);
   const notSelectedApplications = useMemo(() => visibleApplications.filter((application) => application.status === "rejected" || application.status === "cancelled"), [visibleApplications]);
   const displayedApplications = tab === "booked" ? bookedApplications : tab === "notSelected" ? notSelectedApplications : activeApplications;
-
-  function startLongPress(action: () => void) {
-    if (longPressTimer.current) clearTimeout(longPressTimer.current);
-    longPressFired.current = false;
-    longPressTimer.current = setTimeout(() => {
-      longPressFired.current = true;
-      action();
-    }, 650);
-  }
-
-  function cancelLongPress() {
-    if (longPressTimer.current) clearTimeout(longPressTimer.current);
-    longPressTimer.current = null;
-    setTimeout(() => { longPressFired.current = false; }, 120);
-  }
-
-  function longPressHandlers(action: () => void) {
-    return {
-      onPointerDown: () => startLongPress(action),
-      onPointerUp: cancelLongPress,
-      onPointerLeave: cancelLongPress,
-      onPointerCancel: cancelLongPress,
-      onContextMenu: (event: MouseEvent) => {
-        event.preventDefault();
-        action();
-      },
-    };
-  }
 
   async function hideJourneyItem() {
     if (!deleteTarget) return;
@@ -181,20 +151,26 @@ export default function MyApplicationsPage() {
         updatedAt: serverTimestamp(),
       });
       await batch.commit();
-      await notifyQuietly({
-        recipientUid: application.agencyId,
-        senderUid: user.uid,
-        type: "replacement_needed",
-        title: `${actorName} wants to cancel: ${brief.title}`,
-        body: `${actorName} requested a replacement for ${brief.title}. Reason: ${finalReason}. Open Casting Briefs to review the replacement pool and choose the final actor by ${formatDate(deadline)}.`,
-        href: `/agent/briefs?replacement=${encodeURIComponent(application.briefId)}`,
-        applicationId: application.id,
-        briefId: application.briefId,
-      });
       setCancelTarget(null);
-      setNotice("Your agency has been alerted and a replacement slot is open.");
-    } catch {
-      setNotice("We could not request a replacement. Please try again.");
+      try {
+        await sendNotification({
+          recipientUid: application.agencyId,
+          senderUid: user.uid,
+          type: "replacement_needed",
+          title: `${actorName} wants to cancel: ${brief.title}`,
+          body: `${actorName} requested a replacement for ${brief.title}. Reason: ${finalReason}. Open Casting Briefs to review the replacement pool and choose the final actor by ${formatDate(deadline)}.`,
+          href: `/agent/briefs?replacement=${encodeURIComponent(application.briefId)}`,
+          applicationId: application.id,
+          briefId: application.briefId,
+        });
+        setNotice("Your agency has been alerted and a replacement slot is open.");
+      } catch (notificationError) {
+        console.error("Replacement slot opened, but notification failed.", notificationError);
+        setNotice("Replacement slot opened, but the inbox alert was blocked. Publish the latest Firestore rules, then ask the agency to open Casting Briefs.");
+      }
+    } catch (error) {
+      console.error("Unable to request replacement.", error);
+      setNotice("We could not request a replacement. Please check that the latest Firestore rules are published, then try again.");
     } finally {
       setReplacementWorkingId("");
     }
@@ -265,7 +241,6 @@ export default function MyApplicationsPage() {
             <article
               key={application.id}
               className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-brand-silver/70 transition hover:shadow-lg hover:shadow-brand-navy/5"
-              {...longPressHandlers(() => setDeleteTarget(application))}
             >
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
@@ -364,7 +339,12 @@ export default function MyApplicationsPage() {
                 </div>
                 <Status status={application.status} />
               </div>
-              <p className="mt-4 border-t border-slate-100 pt-3 text-xs font-semibold text-slate-400">Press and hold to remove this item from your journey history.</p>
+              <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                <p className="text-xs font-semibold text-slate-400">Remove only hides this item from your journey history.</p>
+                <button type="button" onClick={() => setDeleteTarget(application)} className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-slate-50 px-3 text-xs font-bold text-slate-500 hover:bg-red-50 hover:text-red-700">
+                  <Trash2 className="size-3.5" />Remove
+                </button>
+              </div>
             </article>
           );
         })}

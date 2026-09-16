@@ -109,6 +109,100 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
     }
   }
 
+  async function confirmReplacementFromReview(application: Application) {
+    if (!user) return;
+    const brief = briefs.find((item) => item.id === application.briefId);
+    const actor = actors[application.actorUid];
+    if (!brief?.replacementOpen || application.status !== "replacement_available") {
+      setNotice("This application is not ready to confirm as a replacement yet.");
+      return;
+    }
+    const actorName = actor?.stageName || actor?.fullName || "Actor";
+    setWorking(application.id);
+    setNotice("");
+    try {
+      const batch = writeBatch(db);
+      const usingShootRoom = Boolean(brief.shootRoomId);
+      batch.update(doc(db, "applications", application.id), { status: "booked", decidedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      batch.update(doc(db, "briefs", brief.id), {
+        replacementOpen: false,
+        replacementSelectedActorUid: application.actorUid,
+        replacementFulfilledAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      batch.set(doc(db, "bookings", application.id), {
+        applicationId: application.id,
+        briefId: application.briefId,
+        actorUid: application.actorUid,
+        agencyId: user.uid,
+        agencyName,
+        actorName,
+        briefTitle: brief.title,
+        location: brief.location,
+        shootDate: `${briefDateLabel(brief)} · ${briefCallTimeLabel(brief)}`,
+        shootDateTime: brief.shootDateTime,
+        callTime: briefCallTimeLabel(brief),
+        rate: brief.rate,
+        status: "confirmed",
+        confirmedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+
+      if (usingShootRoom) {
+        const roomRef = doc(db, "shootRooms", brief.shootRoomId);
+        const roomSnapshot = await getDoc(roomRef);
+        const roomData = roomSnapshot.data() ?? {};
+        const participantUids = Array.isArray(roomData.participantUids) ? roomData.participantUids.filter((uid): uid is string => typeof uid === "string") : [user.uid];
+        const actorSummaries = Array.isArray(roomData.actorSummaries) ? roomData.actorSummaries.filter((summary: { uid?: unknown }) => typeof summary.uid === "string" && summary.uid !== brief.replacementCancelledActorUid && summary.uid !== application.actorUid) : [];
+        const replacementSummary = {
+          uid: application.actorUid,
+          name: actorName,
+          photo: actor?.headshot || "",
+          bio: actor?.bio || "",
+          ageRange: actor?.ageRange || "",
+          heightCm: actor?.heightCm || "",
+          hairColor: actor?.hairColor || "",
+          eyeColor: actor?.eyeColor || "",
+          credits: actor?.credits || [],
+          albums: actor?.albums || {},
+        };
+        batch.set(roomRef, {
+          participantUids: Array.from(new Set([...participantUids.filter((uid) => uid !== brief.replacementCancelledActorUid), user.uid, application.actorUid])),
+          actorSummaries: [...actorSummaries, replacementSummary],
+          readBy: [user.uid],
+          deletedFor: [],
+          lastMessage: `${actorName} has been confirmed as the replacement for ${brief.title}.`,
+          lastSenderUid: user.uid,
+          lastMessageAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+        batch.set(doc(db, "shootRooms", brief.shootRoomId, "actorZCards", application.actorUid), replacementSummary, { merge: true });
+      }
+
+      await batch.commit();
+      await notifyQuietly({
+        recipientUid: application.actorUid,
+        senderUid: user.uid,
+        type: "replacement_confirmed",
+        title: `Replacement confirmed: ${brief.title}`,
+        body: usingShootRoom
+          ? `You’ve been confirmed as the replacement for ${brief.title}. Final details are in your CASTARZ shoot room.`
+          : `You’ve been confirmed as the replacement for ${brief.title}. Final details are in My Applications${brief.whatsappLink ? " with the WhatsApp group link" : ""}.`,
+        href: usingShootRoom ? `/actor/inbox?shoot=${brief.shootRoomId}` : "/actor/briefs",
+        applicationId: application.id,
+        briefId: application.briefId,
+      });
+      setActive((current) => current?.id === application.id ? { ...current, status: "booked" } : current);
+      setApps((current) => current.map((item) => item.id === application.id ? { ...item, status: "booked" } : item));
+      setNotice(`${actorName} was confirmed as the replacement for ${brief.title}.`);
+    } catch (error) {
+      console.error("Unable to confirm replacement.", error);
+      setNotice("We could not confirm this replacement. Please check the latest Firestore rules are published, then try again.");
+    } finally {
+      setWorking("");
+    }
+  }
+
   function requestDecision(application: Application, status: Status) {
     if (status === "selected" && application.status !== "selected") {
       setBookingApp(application);
@@ -173,7 +267,7 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
           <>
             <ApplicantStoryRail applications={filteredApps} actors={actors} open={setActive} />
             <div className="hidden gap-3 md:grid md:grid-cols-2 xl:grid-cols-3">
-              {filteredApps.map((application) => <ActorCard key={application.id} application={application} brief={briefs.find((brief) => brief.id === application.briefId)} actor={actors[application.actorUid]} open={() => setActive(application)} />)}
+              {filteredApps.map((application) => <ActorCard key={application.id} application={application} brief={briefs.find((brief) => brief.id === application.briefId)} actor={actors[application.actorUid]} working={working === application.id} open={() => setActive(application)} confirmReplacement={() => void confirmReplacementFromReview(application)} />)}
             </div>
           </>
         ) : groups.length ? (
@@ -190,7 +284,7 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
           </div>
         )}
       </section>
-      {active && <ActorDossier application={active} actor={actors[active.actorUid]} close={() => setActive(null)} working={working === active.id} decide={requestDecision} />}
+      {active && <ActorDossier application={active} brief={briefs.find((brief) => brief.id === active.briefId)} actor={actors[active.actorUid]} close={() => setActive(null)} working={working === active.id} decide={requestDecision} confirmReplacement={() => void confirmReplacementFromReview(active)} />}
       {bookingApp && (
         <BookingConfirmDialog
           actorName={bookingActor?.stageName || bookingActor?.fullName || "This actor"}
@@ -244,7 +338,7 @@ function ApplicantStoryRail({ applications, actors, open }: { applications: Appl
   );
 }
 
-function ActorCard({ application, brief, actor, open }: { application: Application; brief?: AgentBrief; actor?: Actor; open: () => void }) {
+function ActorCard({ application, brief, actor, working, open, confirmReplacement }: { application: Application; brief?: AgentBrief; actor?: Actor; working: boolean; open: () => void; confirmReplacement: () => void }) {
   return (
     <div className="group rounded-2xl border border-slate-200 bg-white p-3 transition hover:-translate-y-0.5 hover:border-brand-blue hover:shadow-lg hover:shadow-brand-navy/10">
       <Link href={`/agent/talent/${application.actorUid}`} className="flex items-center gap-3 rounded-xl p-1 hover:bg-brand-ice">
@@ -265,9 +359,9 @@ function ActorCard({ application, brief, actor, open }: { application: Applicati
           </Link>
         )}
         {application.status === "replacement_available" && brief?.replacementOpen && (
-          <Link href={`/agent/briefs?replacement=${encodeURIComponent(application.briefId)}`} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl bg-brand-blue px-4 text-xs font-bold text-white hover:bg-brand-navy">
-            <Radio className="size-3.5" />Confirm replacement
-          </Link>
+          <button type="button" disabled={working} onClick={confirmReplacement} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl bg-brand-blue px-4 text-xs font-bold text-white hover:bg-brand-navy disabled:opacity-60">
+            {working ? <LoaderCircle className="size-3.5 animate-spin" /> : <Radio className="size-3.5" />}Confirm replacement
+          </button>
         )}
       </div>
     </div>
@@ -292,7 +386,7 @@ function statusLabel(status: Status) {
   return "Rejected";
 }
 
-function ActorDossier({ application, actor, close, working, decide }: { application: Application; actor?: Actor; close: () => void; working: boolean; decide: (app: Application, status: Status) => void }) {
+function ActorDossier({ application, brief, actor, close, working, decide, confirmReplacement }: { application: Application; brief?: AgentBrief; actor?: Actor; close: () => void; working: boolean; decide: (app: Application, status: Status) => void; confirmReplacement: () => void }) {
   const photos = albumCategories.flatMap((category) => (actor?.albums?.[category] ?? []).map((source) => ({ category, source })));
   const [viewer, setViewer] = useState<number | null>(null);
   const [headshotOpen, setHeadshotOpen] = useState(false);
@@ -392,7 +486,18 @@ function ActorDossier({ application, actor, close, working, decide }: { applicat
             {!photos.length && <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">No portfolio photos uploaded yet.</p>}
           </div>
         </section>
-        <DecisionBar current={application.status} working={working} decide={(status) => decide(application, status)} />
+        {application.status === "replacement_available" && brief?.replacementOpen ? (
+          <div className="mt-8 rounded-2xl border border-brand-cyan/40 bg-brand-ice p-4">
+            <p className="font-bold text-brand-navy">Replacement response ready</p>
+            <p className="mt-1 text-sm leading-6 text-slate-600">Confirm this actor only if they are the final replacement for the cancelled booking.</p>
+            <button type="button" disabled={working} onClick={confirmReplacement} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-blue px-4 text-sm font-bold text-white hover:bg-brand-navy disabled:opacity-60">
+              {working ? <LoaderCircle className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+              Confirm replacement
+            </button>
+          </div>
+        ) : (
+          <DecisionBar current={application.status} working={working} decide={(status) => decide(application, status)} />
+        )}
       </section>
       {actor?.headshot && headshotOpen && <PhotoLightbox photo={actor.headshot} label={`${actorName} profile photo`} close={() => setHeadshotOpen(false)} />}
       {activePhoto && <PhotoViewer photo={activePhoto} index={viewer ?? 0} total={photos.length} close={() => setViewer(null)} previous={() => setViewer((current) => current === null ? null : (current - 1 + photos.length) % photos.length)} next={() => setViewer((current) => current === null ? null : (current + 1) % photos.length)} />}
