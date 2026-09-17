@@ -1,10 +1,21 @@
 "use client";
 
 import { doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
-import { CheckCircle2, Clock3, LoaderCircle, LockKeyhole, MapPin, Send, ShieldCheck, UserRound, XCircle } from "lucide-react";
+import { CheckCircle2, Clock3, Images, LoaderCircle, LockKeyhole, MapPin, PlaySquare, Send, ShieldCheck, UserRound, X, XCircle, ZoomIn } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { db } from "@/lib/firebase";
+
+const albumCategories = ["Formal", "Casual", "Commercial", "Fitness"] as const;
+type AlbumCategory = (typeof albumCategories)[number];
+
+interface SharedCredit {
+  production: string;
+  year: string;
+  role: string;
+  mediaUrl: string;
+  mediaType: "none" | "image" | "video";
+}
 
 interface SharedActor {
   uid: string;
@@ -17,6 +28,8 @@ interface SharedActor {
   hairColor: string;
   eyeColor: string;
   ageRange: string;
+  credits: SharedCredit[];
+  albums: Record<AlbumCategory, string[]>;
 }
 
 interface SharedShortlist {
@@ -42,6 +55,7 @@ export default function SharedShortlistPage({ params }: { params: Promise<{ shor
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [nowMs] = useState(() => Date.now());
+  const [previewActor, setPreviewActor] = useState<SharedActor | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -57,7 +71,7 @@ export default function SharedShortlistPage({ params }: { params: Promise<{ shor
             production: typeof data.production === "string" ? data.production : "",
             location: typeof data.location === "string" ? data.location : "",
             shootDate: typeof data.shootDate === "string" ? data.shootDate : "",
-            publicActors: Array.isArray(data.publicActors) ? data.publicActors.filter((actor): actor is SharedActor => typeof actor?.uid === "string") : [],
+            publicActors: Array.isArray(data.publicActors) ? data.publicActors.filter((actor): actor is SharedActor => typeof actor?.uid === "string").map(normalizeSharedActor) : [],
             selectedActorUids: Array.isArray(data.selectedActorUids) ? data.selectedActorUids.filter((uid): uid is string => typeof uid === "string") : [],
             submittedAtMs: data.submittedAt?.toMillis?.() ?? 0,
             expiresAtMs: data.expiresAt?.toMillis?.() ?? 0,
@@ -161,12 +175,15 @@ export default function SharedShortlistPage({ params }: { params: Promise<{ shor
             const selected = selectedActorUids.includes(actor.uid);
             return (
               <article key={actor.uid} className={`overflow-hidden rounded-3xl bg-white shadow-sm ring-1 transition ${selected ? "ring-2 ring-brand-blue shadow-lg shadow-brand-blue/10" : "ring-brand-silver/70 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-brand-navy/10"}`}>
-                <button type="button" disabled={submitted} onClick={() => toggleActor(actor.uid)} className="relative flex aspect-[4/3] w-full items-center justify-center bg-brand-ice text-left disabled:cursor-default" aria-label={`Select ${actor.stageName || actor.fullName}`}>
+                <div className="relative flex aspect-[4/3] w-full items-center justify-center bg-brand-ice text-left">
                   {actor.headshot ? <Image src={actor.headshot} alt={actor.stageName || actor.fullName} width={700} height={525} unoptimized className="size-full object-contain object-top" /> : <UserRound className="size-12 text-brand-blue" />}
-                  <span className={`absolute right-3 top-3 flex size-9 items-center justify-center rounded-full shadow-sm ${selected ? "bg-brand-blue text-white" : "bg-white text-slate-300 ring-1 ring-brand-silver/70"}`}>
+                  <button type="button" disabled={submitted} onClick={() => toggleActor(actor.uid)} className={`absolute right-3 top-3 flex size-10 items-center justify-center rounded-full shadow-sm transition disabled:cursor-default ${selected ? "bg-brand-blue text-white" : "bg-white text-slate-300 ring-1 ring-brand-silver/70 hover:text-brand-blue"}`} aria-label={`${selected ? "Remove" : "Select"} ${actor.stageName || actor.fullName}`}>
                     <CheckCircle2 className="size-5" />
-                  </span>
-                </button>
+                  </button>
+                  <button type="button" onClick={() => setPreviewActor(actor)} className="absolute bottom-3 left-3 inline-flex min-h-10 items-center gap-2 rounded-xl bg-white/95 px-3 text-xs font-black text-brand-navy shadow-sm ring-1 ring-brand-silver/70 backdrop-blur hover:bg-brand-ice" aria-label={`View ${actor.stageName || actor.fullName} z-card`}>
+                    <ZoomIn className="size-4 text-brand-blue" />View z-card
+                  </button>
+                </div>
                 <div className="p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -176,7 +193,15 @@ export default function SharedShortlistPage({ params }: { params: Promise<{ shor
                     {selected && <span className="rounded-full bg-brand-ice px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-brand-blue">Preferred</span>}
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">{[actor.ageRange, actor.heightCm && `${actor.heightCm}cm`, actor.hairColor, actor.eyeColor].filter(Boolean).map((spec) => <span key={spec} className="rounded-full bg-brand-ice px-3 py-1 text-xs font-bold text-brand-navy">{spec}</span>)}</div>
-                  {actor.bio && <p className="mt-4 line-clamp-4 text-sm leading-6 text-slate-600">{actor.bio}</p>}
+                  {actor.bio && <p className="mt-4 line-clamp-3 text-sm leading-6 text-slate-600">{actor.bio}</p>}
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setPreviewActor(actor)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand-navy px-3 text-sm font-bold text-white hover:bg-brand-blue">
+                      <Images className="size-4" />Open z-card
+                    </button>
+                    <button type="button" disabled={submitted} onClick={() => toggleActor(actor.uid)} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-bold disabled:opacity-60 ${selected ? "bg-emerald-50 text-emerald-800" : "bg-brand-ice text-brand-navy hover:bg-brand-cyan/20"}`}>
+                      <CheckCircle2 className="size-4" />{selected ? "Preferred" : "Select"}
+                    </button>
+                  </div>
                 </div>
               </article>
             );
@@ -201,7 +226,117 @@ export default function SharedShortlistPage({ params }: { params: Promise<{ shor
           {error && <p className="mx-auto mt-2 max-w-6xl text-sm font-bold text-red-700">{error}</p>}
         </div>
       )}
+      {previewActor && <ProductionZCard actor={previewActor} close={() => setPreviewActor(null)} />}
     </main>
+  );
+}
+
+function normalizeSharedActor(actor: SharedActor): SharedActor {
+  const albums = actor.albums ?? {};
+  return {
+    ...actor,
+    applicationId: typeof actor.applicationId === "string" ? actor.applicationId : "",
+    fullName: typeof actor.fullName === "string" ? actor.fullName : "Actor",
+    stageName: typeof actor.stageName === "string" ? actor.stageName : "",
+    headshot: typeof actor.headshot === "string" ? actor.headshot : "",
+    bio: typeof actor.bio === "string" ? actor.bio : "",
+    heightCm: typeof actor.heightCm === "string" ? actor.heightCm : "",
+    hairColor: typeof actor.hairColor === "string" ? actor.hairColor : "",
+    eyeColor: typeof actor.eyeColor === "string" ? actor.eyeColor : "",
+    ageRange: typeof actor.ageRange === "string" ? actor.ageRange : "",
+    credits: Array.isArray(actor.credits) ? actor.credits.filter((credit): credit is SharedCredit => typeof credit?.production === "string").slice(0, 8) : [],
+    albums: Object.fromEntries(albumCategories.map((category) => [category, Array.isArray(albums[category]) ? albums[category].filter((source): source is string => typeof source === "string").slice(0, 4) : []])) as Record<AlbumCategory, string[]>,
+  };
+}
+
+function ProductionZCard({ actor, close }: { actor: SharedActor; close: () => void }) {
+  const actorName = actor.stageName || actor.fullName || "Actor";
+  const photos = albumCategories.flatMap((category) => actor.albums[category].map((source) => ({ category, source })));
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-brand-navy/60 p-0 backdrop-blur-sm sm:items-center sm:justify-center sm:p-6">
+      <section className="max-h-[94dvh] w-full max-w-5xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-8">
+        <header className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-brand-blue">Production z-card</p>
+            <h2 className="mt-1 truncate text-2xl font-bold text-brand-navy sm:text-3xl">{actorName}</h2>
+            {actor.stageName && <p className="mt-1 text-sm font-semibold text-slate-500">{actor.fullName}</p>}
+          </div>
+          <button type="button" onClick={close} className="flex size-11 shrink-0 items-center justify-center rounded-full bg-brand-ice text-brand-navy hover:bg-slate-100" aria-label="Close z-card">
+            <X className="size-5" />
+          </button>
+        </header>
+
+        <div className="mt-6 grid gap-5 md:grid-cols-[220px_1fr]">
+          <div className="relative aspect-[3/4] overflow-hidden rounded-3xl bg-brand-ice">
+            {actor.headshot ? <Image src={actor.headshot} alt={`${actorName} headshot`} fill unoptimized className="object-contain object-top" /> : <div className="flex size-full items-center justify-center"><UserRound className="size-14 text-brand-blue" /></div>}
+          </div>
+          <div className="self-center">
+            <p className="text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">{actor.bio || "No bio supplied for this z-card."}</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {[actor.ageRange, actor.heightCm && `${actor.heightCm} cm`, actor.hairColor, actor.eyeColor].filter(Boolean).map((item) => <span key={item} className="rounded-full bg-brand-ice px-3 py-1.5 text-sm font-bold text-brand-navy">{item}</span>)}
+            </div>
+          </div>
+        </div>
+
+        <section className="mt-8">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h3 className="text-xl font-bold text-brand-navy">Portfolio album</h3>
+              <p className="mt-1 text-sm text-slate-600">Recent profile photos supplied by the actor.</p>
+            </div>
+            <span className="rounded-full bg-brand-ice px-3 py-1.5 text-sm font-bold text-brand-navy">{photos.length} photos</span>
+          </div>
+          <div className="mt-5 space-y-6">
+            {albumCategories.map((category) => {
+              const categoryPhotos = actor.albums[category];
+              if (!categoryPhotos.length) return null;
+              return (
+                <div key={category}>
+                  <p className="mb-3 text-xs font-black uppercase tracking-[0.16em] text-brand-blue">{category}</p>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+                    {categoryPhotos.map((source, index) => (
+                      <a key={`${category}-${index}-${source.slice(-12)}`} href={source} target="_blank" rel="noreferrer" className="group relative aspect-square overflow-hidden rounded-2xl bg-brand-ice">
+                        <Image src={source} alt={`${actorName} ${category} photo`} fill unoptimized className="object-contain object-top transition duration-300 group-hover:scale-105" />
+                        <span className="absolute inset-0 flex items-center justify-center bg-brand-navy/0 text-white transition group-hover:bg-brand-navy/35"><ZoomIn className="size-7 opacity-0 transition group-hover:opacity-100" /></span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            {!photos.length && <p className="rounded-2xl border border-dashed border-brand-silver bg-brand-ice/40 p-5 text-sm font-semibold text-slate-500">No album photos were attached to this production link.</p>}
+          </div>
+        </section>
+
+        <section className="mt-8">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h3 className="text-xl font-bold text-brand-navy">Credits</h3>
+              <p className="mt-1 text-sm text-slate-600">Screen, commercial, stage, or supplied media references.</p>
+            </div>
+            <span className="rounded-full bg-brand-ice px-3 py-1.5 text-sm font-bold text-brand-navy">{actor.credits.length} credits</span>
+          </div>
+          {actor.credits.length ? (
+            <div className="mt-5 overflow-hidden rounded-2xl border border-brand-silver/70">
+              {actor.credits.map((credit, index) => (
+                <div key={`${credit.production}-${credit.year}-${index}`} className="grid gap-4 border-b border-slate-100 bg-white p-4 last:border-b-0 sm:grid-cols-[140px_1fr]">
+                  <div className="relative aspect-video overflow-hidden rounded-2xl bg-brand-ice">
+                    {credit.mediaType === "image" && credit.mediaUrl ? <Image src={credit.mediaUrl} alt={`${credit.production} media`} fill unoptimized className="object-cover" /> : credit.mediaType === "video" && credit.mediaUrl ? <video src={credit.mediaUrl} controls playsInline className="size-full object-cover" /> : <div className="flex size-full items-center justify-center text-brand-blue"><PlaySquare className="size-6" /></div>}
+                  </div>
+                  <div className="grid gap-1 self-center sm:grid-cols-[1fr_90px_1fr]">
+                    <p className="font-bold text-brand-navy">{credit.production || "Untitled production"}</p>
+                    <p className="text-sm font-semibold text-slate-500">{credit.year || "Year"}</p>
+                    <p className="text-sm font-semibold text-slate-700">{credit.role || "Role not specified"}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-5 rounded-2xl border border-dashed border-brand-silver bg-brand-ice/40 p-5 text-sm font-semibold text-slate-500">No credits were attached to this production link.</p>
+          )}
+        </section>
+      </section>
+    </div>
   );
 }
 

@@ -51,6 +51,7 @@ export default function MyApplicationsPage() {
   const [cancelTarget, setCancelTarget] = useState<Application | null>(null);
   const [hiding, setHiding] = useState(false);
   const [replacementWorkingId, setReplacementWorkingId] = useState("");
+  const [replacementSentId, setReplacementSentId] = useState("");
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
@@ -151,6 +152,7 @@ export default function MyApplicationsPage() {
         updatedAt: serverTimestamp(),
       });
       await batch.commit();
+      setReplacementSentId(application.id);
       setCancelTarget(null);
       try {
         await sendNotification({
@@ -282,23 +284,30 @@ export default function MyApplicationsPage() {
                   )}
 
                   {canRequestReplacement && (
-                    <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 p-4">
+                    <div className={`mt-4 rounded-2xl border p-4 transition ${replacementSentId === application.id ? "border-emerald-100 bg-emerald-50" : "border-red-100 bg-red-50"}`}>
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <p className="flex items-center gap-2 font-bold text-red-800"><AlertTriangle className="size-4" />Can’t make this shoot?</p>
-                          <p className="mt-1 text-sm leading-6 text-red-700">Cancel with a reason and CASTARZ will open an emergency replacement slot for your agency.</p>
+                          <p className={`flex items-center gap-2 font-bold ${replacementSentId === application.id ? "text-emerald-800" : "text-red-800"}`}>
+                            {replacementSentId === application.id ? <CheckCircle2 className="size-4" /> : <AlertTriangle className="size-4" />}
+                            {replacementSentId === application.id ? "Replacement request sent" : "Can’t make this shoot?"}
+                          </p>
+                          <p className={`mt-1 text-sm leading-6 ${replacementSentId === application.id ? "text-emerald-700" : "text-red-700"}`}>
+                            {replacementSentId === application.id ? "Your agency has been alerted and the replacement pool is open." : "Cancel with a reason and CASTARZ will open an emergency replacement slot for your agency."}
+                          </p>
                         </div>
                         <button
                           type="button"
+                          disabled={replacementSentId === application.id}
                           onPointerDown={(event) => event.stopPropagation()}
                           onPointerUp={(event) => event.stopPropagation()}
                           onClick={(event) => {
                             event.stopPropagation();
                             setCancelTarget(application);
                           }}
-                          className="inline-flex min-h-11 items-center rounded-xl bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700"
+                          className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold text-white transition disabled:cursor-default ${replacementSentId === application.id ? "bg-emerald-600" : "bg-red-600 hover:bg-red-700"}`}
                         >
-                          Request replacement
+                          {replacementSentId === application.id && <CheckCircle2 className="size-4" />}
+                          {replacementSentId === application.id ? "Request sent" : "Request replacement"}
                         </button>
                       </div>
                     </div>

@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Clock3, Copy, Edit3, ExternalLink, Globe2, ImagePlus, Link2, LoaderCircle, LockKeyhole, MapPin, MessageCircle, Plus, Radio, Send, ShieldCheck, Trash2, UsersRound, X } from "lucide-react";
-import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AgentApplicationsWorkspace } from "@/components/AgentApplicationsWorkspace";
 import { PhotoLightbox } from "@/components/ProfileChrome";
 import { useAuth } from "@/context/AuthContext";
@@ -89,6 +89,7 @@ export default function BriefsPage() {
   const [editingBrief, setEditingBrief] = useState<AgentBrief | null>(null);
   const [deletingBrief, setDeletingBrief] = useState<AgentBrief | null>(null);
   const [section, setSection] = useState<"briefs" | "applications">("briefs");
+  const formSectionRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -134,6 +135,15 @@ export default function BriefsPage() {
     }, 80);
     return () => window.clearTimeout(timer);
   }, [replacementBriefId, briefs.length]);
+
+  useEffect(() => {
+    if (!open || !editingBrief) return;
+    const timer = window.setTimeout(() => {
+      formSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById("brief-title-input")?.focus();
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [open, editingBrief]);
 
   const applicationsByBrief = useMemo(() => {
     return applications.reduce<Record<string, Application[]>>((groups, application) => {
@@ -186,6 +196,7 @@ export default function BriefsPage() {
   function startNewBrief() {
     setEditingBrief(null);
     setForm(blank);
+    setSection("briefs");
     setOpen(true);
   }
 
@@ -205,6 +216,7 @@ export default function BriefsPage() {
       status: brief.status,
       visibility: brief.visibility,
     });
+    setSection("briefs");
     setOpen(true);
     setNotice("");
   }
@@ -253,7 +265,7 @@ export default function BriefsPage() {
       {notice && <p className="mt-6 flex items-center gap-2 rounded-xl bg-brand-ice px-4 py-3 text-sm font-semibold text-brand-navy"><CheckCircle2 className="size-5 text-brand-blue" />{notice}</p>}
 
       {section === "briefs" && open && (
-        <section className="mt-7 rounded-3xl bg-white p-5 shadow-xl shadow-brand-navy/10 ring-1 ring-brand-silver/70 sm:p-7">
+        <section ref={formSectionRef} className="mt-7 scroll-mt-6 rounded-3xl bg-white p-5 shadow-xl shadow-brand-navy/10 ring-1 ring-brand-silver/70 sm:p-7">
           <div className="flex justify-between gap-4">
             <div>
               <h2 className="text-xl font-bold">{editingBrief ? "Edit casting brief" : "New casting brief"}</h2>
@@ -262,7 +274,7 @@ export default function BriefsPage() {
             <button onClick={closeForm} className="flex size-10 items-center justify-center rounded-full hover:bg-slate-100" aria-label="Close form"><X className="size-5" /></button>
           </div>
           <form onSubmit={saveBrief} className="mt-6 grid gap-5 sm:grid-cols-2">
-            <Input label="Brief title" value={form.title} set={(title) => updateForm("title", title)} placeholder="e.g. Featured extras for a premium fashion commercial" help="Use a clear casting headline actors can understand at a glance." required />
+            <Input id="brief-title-input" label="Brief title" value={form.title} set={(title) => updateForm("title", title)} placeholder="e.g. Featured extras for a premium fashion commercial" help="Use a clear casting headline actors can understand at a glance." required />
             <Input label="Production" value={form.production} set={(production) => updateForm("production", production)} placeholder="e.g. SABC drama, Netflix series, TV commercial, music video" help="Name the show, campaign, client, or production type." />
             <Input label="Location" value={form.location} set={(location) => updateForm("location", location)} placeholder="e.g. Johannesburg CBD, Cape Town studio, Durban beachfront" help="Add the city and any useful area or set location detail." />
             <Input label="Pay rate" value={form.rate} set={(rate) => updateForm("rate", rate)} placeholder="e.g. R1,500 day rate plus usage, or TBC" help="Be specific about rate, usage, overtime, or whether payment is still to be confirmed." />
@@ -517,6 +529,8 @@ function ProductionSelectionLink({ brief, applications, senderUid, productionSho
           hairColor: actor?.hairColor || "",
           eyeColor: actor?.eyeColor || "",
           ageRange: actor?.ageRange || "",
+          credits: actor?.credits || [],
+          albums: actor?.albums || {},
           applicationId: application.id,
         };
       });
@@ -1251,11 +1265,11 @@ function BriefDetail({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Input({ label, value, set, required, placeholder, help, type, min, className = "" }: { label: string; value: string; set: (value: string) => void; required?: boolean; placeholder?: string; help: string; type?: string; min?: string; className?: string }) {
+function Input({ id, label, value, set, required, placeholder, help, type, min, className = "" }: { id?: string; label: string; value: string; set: (value: string) => void; required?: boolean; placeholder?: string; help: string; type?: string; min?: string; className?: string }) {
   return (
     <label className={className}>
       <span className="mb-2 block text-sm font-bold text-slate-700">{label}</span>
-      <input required={required} value={value} placeholder={placeholder} type={type ?? "text"} min={min} onChange={(event) => set(event.target.value)} className="min-h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
+      <input id={id} required={required} value={value} placeholder={placeholder} type={type ?? "text"} min={min} onChange={(event) => set(event.target.value)} className="min-h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-cyan/20" />
       <p className="mt-2 text-xs font-semibold text-slate-500">{help}</p>
     </label>
   );
