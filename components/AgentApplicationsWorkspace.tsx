@@ -83,7 +83,7 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
       batch.update(applicationRef, { status, decidedAt: serverTimestamp(), updatedAt: serverTimestamp() });
       await batch.commit();
       const messages: Record<Status, { type: "application_shortlisted" | "application_rejected"; title: string; body: string } | null> = {
-        standby: { type: "application_shortlisted" as const, title: "You have been shortlisted", body: `${agencyName} shortlisted you for ${brief?.title ?? "a brief"}. Keep your availability close and stay on the lookout for the final booking update.` },
+        standby: { type: "application_shortlisted" as const, title: "You are on standby", body: `${agencyName} moved you to standby for ${brief?.title ?? "a brief"}. Keep your availability close and stay on the lookout for the final booking update.` },
         selected: null,
         booked: null,
         rejected: { type: "application_rejected" as const, title: "Application update", body: `${agencyName} completed selections for ${brief?.title ?? "a brief"}. Keep your profile ready for the next one.` },
@@ -107,7 +107,7 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
       setActive((current) => current?.id === application.id ? { ...current, status } : current);
       setApps((current) => current.map((item) => item.id === application.id ? { ...item, status } : item));
       setBookingApp(null);
-      setNotice(status === "selected" ? `${actorName} is selected for the final cast. The actor will receive the final booking message when you close the brief.` : status === "standby" ? `${actorName} has been shortlisted and notified.` : "Application status updated.");
+      setNotice(status === "selected" ? `${actorName} is selected for the final cast. The actor will receive the final booking message when you close the brief.` : status === "standby" ? `${actorName} has been moved to standby and notified.` : "Application status updated.");
     } catch (error) {
       console.error("Unable to update application decision.", error);
       setNotice(status === "selected" ? "We could not select this booking. Please check your connection and published Firestore rules, then try again." : "We could not update this application. Please try again.");
@@ -228,7 +228,7 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
         </div>
         <div className="grid w-full grid-cols-5 gap-2 rounded-2xl bg-white p-2 shadow-sm ring-1 ring-brand-silver/70 sm:w-auto">
           <MiniStat label="New" value={statusCounts.pending} tone="text-brand-blue" />
-          <MiniStat label="Shortlist" value={statusCounts.standby} tone="text-amber-600" />
+          <MiniStat label="Standby" value={statusCounts.standby} tone="text-amber-600" />
           <MiniStat label="Selected" value={statusCounts.selected} tone="text-emerald-600" />
           <MiniStat label="Booked" value={statusCounts.booked} tone="text-emerald-600" />
           <MiniStat label="Rejected" value={statusCounts.rejected} tone="text-red-600" />
@@ -255,7 +255,7 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
           <div className="grid grid-cols-6 rounded-2xl bg-brand-ice p-1">
             {(["all", "pending", "standby", "selected", "booked", "rejected"] as const).map((status) => (
               <button key={status} type="button" onClick={() => setStatusFilter(status)} className={`min-h-10 rounded-xl px-2 text-xs font-bold capitalize ${statusFilter === status ? "bg-white text-brand-navy shadow-sm" : "text-slate-500"}`}>
-                {status === "pending" ? "New" : status === "standby" ? "Shortlist" : status}
+                {status === "pending" ? "New" : status === "standby" ? "Standby" : status}
               </button>
             ))}
           </div>
@@ -274,7 +274,7 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
           <>
             <ApplicantStoryRail applications={filteredApps} actors={actors} open={setActive} />
             <div className="hidden gap-3 md:grid md:grid-cols-2 xl:grid-cols-3">
-              {filteredApps.map((application) => <ActorCard key={application.id} application={application} brief={briefs.find((brief) => brief.id === application.briefId)} actor={actors[application.actorUid]} working={working === application.id} open={() => setActive(application)} confirmReplacement={() => void confirmReplacementFromReview(application)} />)}
+              {filteredApps.map((application) => <ActorCard key={application.id} application={application} brief={briefs.find((brief) => brief.id === application.briefId)} actor={actors[application.actorUid]} working={working === application.id} open={() => setActive(application)} decide={(status) => requestDecision(application, status)} confirmReplacement={() => void confirmReplacementFromReview(application)} />)}
             </div>
           </>
         ) : groups.length ? (
@@ -345,7 +345,8 @@ function ApplicantStoryRail({ applications, actors, open }: { applications: Appl
   );
 }
 
-function ActorCard({ application, brief, actor, working, open, confirmReplacement }: { application: Application; brief?: AgentBrief; actor?: Actor; working: boolean; open: () => void; confirmReplacement: () => void }) {
+function ActorCard({ application, brief, actor, working, open, decide, confirmReplacement }: { application: Application; brief?: AgentBrief; actor?: Actor; working: boolean; open: () => void; decide: (status: Status) => void; confirmReplacement: () => void }) {
+  const canMoveToStandby = application.status !== "standby" && application.status !== "booked" && application.status !== "cancelled" && application.status !== "replacement_available";
   return (
     <div className="group rounded-2xl border border-slate-200 bg-white p-3 transition hover:-translate-y-0.5 hover:border-brand-blue hover:shadow-lg hover:shadow-brand-navy/10">
       <Link href={`/agent/talent/${application.actorUid}`} className="flex items-center gap-3 rounded-xl p-1 hover:bg-brand-ice">
@@ -360,6 +361,11 @@ function ActorCard({ application, brief, actor, working, open, confirmReplacemen
         <button type="button" onClick={open} className="inline-flex min-h-9 items-center justify-center rounded-xl bg-brand-navy px-4 text-xs font-bold text-white hover:bg-brand-blue">
           Review application
         </button>
+        {canMoveToStandby && (
+          <button type="button" disabled={working} onClick={() => decide("standby")} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl bg-amber-100 px-4 text-xs font-bold text-amber-800 hover:bg-amber-200 disabled:opacity-60">
+            {working ? <LoaderCircle className="size-3.5 animate-spin" /> : <ListChecks className="size-3.5" />}Standby
+          </button>
+        )}
         {application.status === "cancelled" && brief?.replacementOpen && (
           <Link href={`/agent/briefs?replacement=${encodeURIComponent(application.briefId)}`} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl bg-red-600 px-4 text-xs font-bold text-white hover:bg-red-700">
             <Radio className="size-3.5" />Replace actor
@@ -385,7 +391,7 @@ function statusRing(status: Status) {
 
 function statusLabel(status: Status) {
   if (status === "pending") return "New";
-  if (status === "standby") return "Shortlisted";
+  if (status === "standby") return "Standby";
   if (status === "selected") return "Selected";
   if (status === "booked") return "Selected";
   if (status === "cancelled") return "Replacement requested";
@@ -518,8 +524,8 @@ function ActorDossier({ application, actorApplications, brief, actor, close, wor
 function DecisionBar({ current, working, decide }: { current: Status; working: boolean; decide: (status: Status) => void }) {
   const canSelectBooking = current === "standby" || current === "selected" || current === "booked";
   const actions: Array<{ status: Status; label: string; icon: typeof Clock3; active: string; idle: string }> = [
-    { status: "standby", label: "Shortlist", icon: ListChecks, active: "bg-amber-500 text-white ring-4 ring-amber-100", idle: "bg-amber-100 text-amber-800" },
-    { status: "selected", label: current === "pending" ? "Shortlist first" : current === "selected" || current === "booked" ? "Selected" : "Select booking", icon: CheckCircle2, active: "bg-emerald-600 text-white ring-4 ring-emerald-100", idle: canSelectBooking ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-400" },
+    { status: "standby", label: "Standby", icon: ListChecks, active: "bg-amber-500 text-white ring-4 ring-amber-100", idle: "bg-amber-100 text-amber-800" },
+    { status: "selected", label: current === "pending" ? "Standby first" : current === "selected" || current === "booked" ? "Selected" : "Select booking", icon: CheckCircle2, active: "bg-emerald-600 text-white ring-4 ring-emerald-100", idle: canSelectBooking ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-400" },
     { status: "rejected", label: "Reject", icon: XCircle, active: "bg-red-600 text-white ring-4 ring-red-100", idle: "bg-red-50 text-red-700" },
   ];
   return (
@@ -527,7 +533,7 @@ function DecisionBar({ current, working, decide }: { current: Status; working: b
       {actions.map(({ status, label, icon: Icon, active, idle }) => (
         <button key={status} disabled={working || (status === "selected" && (!canSelectBooking || current === "selected" || current === "booked"))} onClick={() => decide(status)} className={`flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold transition-all duration-300 disabled:opacity-50 ${current === status || (status === "selected" && current === "booked") ? active : idle}`}>
           {working ? <LoaderCircle className="size-4 animate-spin" /> : <Icon className="size-4" />}
-          {current === status && status === "standby" ? "Shortlisted" : current === status && status === "rejected" ? "Rejected" : label}
+          {current === status && status === "standby" ? "On standby" : current === status && status === "rejected" ? "Rejected" : label}
         </button>
       ))}
     </div>

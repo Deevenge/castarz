@@ -4,7 +4,7 @@ import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query,
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { AlertTriangle, CheckCircle2, Clock3, Copy, Edit3, ExternalLink, Globe2, ImagePlus, Link2, LoaderCircle, LockKeyhole, MapPin, MessageCircle, Plus, Radio, Send, ShieldCheck, Trash2, UsersRound, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, Copy, Edit3, ExternalLink, Globe2, ImagePlus, Link2, LoaderCircle, LockKeyhole, MapPin, MessageCircle, Plus, Radio, RefreshCw, Send, ShieldCheck, Trash2, UsersRound, X } from "lucide-react";
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AgentApplicationsWorkspace } from "@/components/AgentApplicationsWorkspace";
 import { PhotoLightbox } from "@/components/ProfileChrome";
@@ -45,6 +45,7 @@ type ProductionShortlist = {
   briefId: string;
   selectedActorUids: string[];
   submittedAtMs: number;
+  createdAtMs: number;
   expiresAtMs: number;
   productionName: string;
 };
@@ -116,6 +117,7 @@ export default function BriefsPage() {
         briefId: String(item.data().briefId ?? ""),
         selectedActorUids: Array.isArray(item.data().selectedActorUids) ? item.data().selectedActorUids.filter((uid: unknown): uid is string => typeof uid === "string") : [],
         submittedAtMs: item.data().submittedAt?.toMillis?.() ?? 0,
+        createdAtMs: item.data().createdAt?.toMillis?.() ?? 0,
         expiresAtMs: item.data().expiresAt?.toMillis?.() ?? 0,
         productionName: typeof item.data().productionName === "string" ? item.data().productionName : "",
       })));
@@ -362,6 +364,7 @@ export default function BriefsPage() {
           brief={closingBrief}
           applications={applicationsByBrief[closingBrief.id] ?? []}
           senderUid={user?.uid ?? ""}
+          productionShortlists={productionShortlists.filter((shortlist) => shortlist.briefId === closingBrief.id)}
           onClose={() => setClosingBrief(null)}
           onDone={(message) => {
             setClosingBrief(null);
@@ -487,7 +490,7 @@ function zCardSnapshotFromActor(actor: ActorProfile): ActorZCardSnapshot {
 function ProductionSelectionLink({ brief, applications, senderUid, productionShortlists, onDone }: { brief: AgentBrief; applications: Application[]; senderUid: string; productionShortlists: ProductionShortlist[]; onDone: (message: string) => void }) {
   const eligible = useMemo(() => applications.filter((application) => application.status === "standby" || application.status === "selected" || application.status === "booked"), [applications]);
   const eligibleKey = eligible.map((application) => application.id).join("|");
-  const latestShortlist = productionShortlists.slice().sort((left, right) => (right.submittedAtMs || right.expiresAtMs) - (left.submittedAtMs || left.expiresAtMs))[0];
+  const latestShortlist = productionShortlists.slice().sort((left, right) => (right.submittedAtMs || right.createdAtMs || right.expiresAtMs) - (left.submittedAtMs || left.createdAtMs || left.expiresAtMs))[0];
   const [actorDetails, setActorDetails] = useState<Record<string, ActorZCardSnapshot>>({});
   const [working, setWorking] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -534,7 +537,14 @@ function ProductionSelectionLink({ brief, applications, senderUid, productionSho
           applicationId: application.id,
         };
       });
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7);
+      if (latestShortlist && !latestShortlist.submittedAtMs) {
+        await updateDoc(doc(db, "shortlists", latestShortlist.id), {
+          expiresAt: new Date(0),
+          updatedAt: serverTimestamp(),
+        });
+      }
       const created = await addDoc(collection(db, "shortlists"), {
         agencyId: senderUid,
         briefId: brief.id,
@@ -553,7 +563,7 @@ function ProductionSelectionLink({ brief, applications, senderUid, productionSho
       const shareUrl = `${window.location.origin}/share/${created.id}`;
       await navigator.clipboard?.writeText(shareUrl);
       setCopied(true);
-      onDone("Production one-time selection link created and copied.");
+      onDone(latestShortlist ? "Production link regenerated, previous active link retired, and new link copied." : "Production one-time selection link created and copied.");
     } catch (createError) {
       console.error("Unable to create production selection link.", createError);
       setError("We could not create the production link. Please try again.");
@@ -577,9 +587,9 @@ function ProductionSelectionLink({ brief, applications, senderUid, productionSho
           <h3 className="mt-1 font-bold text-brand-navy">One-time client review</h3>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">Share a polished guest page with production so they can choose preferred actors once. No login needed.</p>
         </div>
-        <button type="button" disabled={working || !eligible.length} onClick={() => void createProductionLink()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-navy px-4 text-sm font-bold text-white hover:bg-brand-blue disabled:opacity-60">
-          {working ? <LoaderCircle className="size-4 animate-spin" /> : <Link2 className="size-4" />}
-          {latestShortlist ? "Create fresh link" : "Create link"}
+        <button type="button" disabled={working || !eligible.length} onClick={() => void createProductionLink()} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold text-white disabled:opacity-60 ${latestShortlist ? "bg-brand-blue hover:bg-brand-navy" : "bg-brand-navy hover:bg-brand-blue"}`}>
+          {working ? <LoaderCircle className="size-4 animate-spin" /> : latestShortlist ? <RefreshCw className="size-4" /> : <Link2 className="size-4" />}
+          {latestShortlist ? "Regenerate link" : "Create link"}
         </button>
       </div>
 
@@ -608,6 +618,9 @@ function ProductionSelectionLink({ brief, applications, senderUid, productionSho
             <div className="flex gap-2">
               <button type="button" onClick={() => void copyLink()} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-white px-3 text-sm font-bold text-brand-navy ring-1 ring-brand-silver/70 hover:bg-brand-ice">
                 <Copy className="size-4" />{copied ? "Copied" : "Copy"}
+              </button>
+              <button type="button" disabled={working || !eligible.length} onClick={() => void createProductionLink()} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-white px-3 text-sm font-bold text-brand-blue ring-1 ring-brand-silver/70 hover:bg-brand-ice disabled:opacity-60">
+                {working ? <LoaderCircle className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}{working ? "Creating..." : "Regenerate"}
               </button>
               <a href={link} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-brand-blue px-3 text-sm font-bold text-white hover:bg-brand-navy">
                 <ExternalLink className="size-4" />Open
@@ -907,10 +920,14 @@ function applicationStageLabel(status: string) {
         : status || "applicant";
 }
 
-function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: { brief: AgentBrief; applications: Application[]; senderUid: string; onClose: () => void; onDone: (message: string) => void }) {
+function CloseBriefDialog({ brief, applications, senderUid, productionShortlists, onClose, onDone }: { brief: AgentBrief; applications: Application[]; senderUid: string; productionShortlists: ProductionShortlist[]; onClose: () => void; onDone: (message: string) => void }) {
   const shortlist = useMemo(() => applications.filter((application) => application.status === "standby" || application.status === "selected" || application.status === "booked"), [applications]);
   const shortlistKey = shortlist.map((application) => application.id).join("|");
-  const [selectedBookingIds, setSelectedBookingIds] = useState<string[]>(shortlist.filter((application) => application.status === "selected" || application.status === "booked").map((application) => application.id));
+  const latestProductionSelection = useMemo(() => productionShortlists
+    .filter((shortlist) => shortlist.submittedAtMs && shortlist.selectedActorUids.length)
+    .sort((left, right) => right.submittedAtMs - left.submittedAtMs)[0], [productionShortlists]);
+  const productionPreferredActorUids = useMemo(() => new Set(latestProductionSelection?.selectedActorUids ?? []), [latestProductionSelection]);
+  const [selectedBookingIds, setSelectedBookingIds] = useState<string[]>(shortlist.filter((application) => application.status === "selected" || application.status === "booked" || productionPreferredActorUids.has(application.actorUid)).map((application) => application.id));
   const [actorDetails, setActorDetails] = useState<Record<string, ActorZCardSnapshot>>({});
   const [previewPhoto, setPreviewPhoto] = useState<{ photo: string; label: string } | null>(null);
   const [commsMode, setCommsMode] = useState<FinalCommsMode>("whatsapp");
@@ -1081,12 +1098,18 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
               </div>
               <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-brand-navy">{selectedBookings.length} booked</span>
             </div>
+            {latestProductionSelection && (
+              <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
+                Production preferred actors are pre-selected{latestProductionSelection.productionName ? ` from ${latestProductionSelection.productionName}` : ""}. You can still adjust the final cast before closing.
+              </div>
+            )}
             {shortlist.length ? (
               <div className="mt-4 space-y-2">
                 {shortlist.map((application) => {
                   const selected = selectedBookingIds.includes(application.id);
                   const actor = actorDetails[application.actorUid];
                   const actorName = actor?.name || "Loading actor...";
+                  const productionPicked = productionPreferredActorUids.has(application.actorUid);
                   return (
                     <div key={application.id} className={`flex w-full items-center gap-3 rounded-2xl border p-3 transition ${selected ? "border-emerald-200 bg-white shadow-sm" : "border-transparent bg-white/65 hover:bg-white"}`}>
                       <button type="button" disabled={!actor?.photo} onClick={() => actor?.photo && setPreviewPhoto({ photo: actor.photo, label: `${actorName} profile photo` })} className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-navy text-xs font-black text-brand-cyan disabled:cursor-default" aria-label={`Preview ${actorName} profile photo`}>
@@ -1094,7 +1117,10 @@ function CloseBriefDialog({ brief, applications, senderUid, onClose, onDone }: {
                       </button>
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-bold text-brand-navy">{actorName}</p>
-                        <p className="mt-0.5 text-xs font-semibold text-slate-500">{application.status === "booked" || application.status === "selected" ? "Selected for final cast" : "Shortlisted"}</p>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          <span className="rounded-full bg-brand-ice px-2 py-0.5 text-[11px] font-bold text-slate-600">{application.status === "booked" || application.status === "selected" ? "Selected for final cast" : "Standby"}</span>
+                          {productionPicked && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-black text-emerald-700 ring-1 ring-emerald-100">Production pick</span>}
+                        </div>
                         <Link href={`/agent/talent/${application.actorUid}`} className="mt-2 inline-flex min-h-8 items-center rounded-lg bg-brand-ice px-3 text-xs font-bold text-brand-blue hover:bg-brand-cyan/20">
                           Review application
                         </Link>
