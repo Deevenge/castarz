@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, Download, ExternalLink, LayoutGrid, ListChecks, LoaderCircle, Maximize2, PlaySquare, Radio, Search, UserRound, X, XCircle, ZoomIn } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { ActorReliabilityPanel, type ReliabilityApplication } from "@/components/ActorReliabilityPanel";
 import { BookingConfirmDialog } from "@/components/BookingConfirmDialog";
 import { PhotoLightbox } from "@/components/ProfileChrome";
 import { useAuth } from "@/context/AuthContext";
@@ -14,7 +15,7 @@ import { notifyQuietly } from "@/lib/notify";
 import { albumCategories, normalizeActorProfile, type ActorCredit, type AlbumCategory } from "@/lib/actor-profile";
 
 type Status = "pending" | "standby" | "selected" | "booked" | "rejected" | "cancelled" | "replacement_available";
-type Application = { id: string; briefId: string; actorUid: string; status: Status };
+type Application = ReliabilityApplication & { id: string; briefId: string; actorUid: string; status: Status };
 type Actor = { fullName: string; stageName: string; bio: string; headshot: string; heightCm: string; hairColor: string; eyeColor: string; ageRange: string; availabilityStatus: string; credits: ActorCredit[]; albums: Record<AlbumCategory, string[]> };
 
 export function AgentApplicationsWorkspace({ compact = false }: { compact?: boolean }) {
@@ -34,7 +35,13 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
   useEffect(() => {
     if (!user) return;
     const appStop = onSnapshot(query(collection(db, "applications"), where("agencyId", "==", user.uid)), async (snapshot) => {
-      const next = snapshot.docs.map((item) => ({ id: item.id, briefId: item.data().briefId as string, actorUid: item.data().actorUid as string, status: item.data().status as Status }));
+      const next = snapshot.docs.map((item) => ({
+        id: item.id,
+        briefId: item.data().briefId as string,
+        actorUid: item.data().actorUid as string,
+        status: item.data().status as Status,
+        cancelledAtMs: item.data().cancelledAt?.toMillis?.() ?? 0,
+      }));
       setApps(next);
       setActors(Object.fromEntries(await Promise.all(next.map(async (app) => [app.actorUid, await loadActor(app.actorUid)] as const))));
     });
@@ -284,7 +291,7 @@ export function AgentApplicationsWorkspace({ compact = false }: { compact?: bool
           </div>
         )}
       </section>
-      {active && <ActorDossier application={active} brief={briefs.find((brief) => brief.id === active.briefId)} actor={actors[active.actorUid]} close={() => setActive(null)} working={working === active.id} decide={requestDecision} confirmReplacement={() => void confirmReplacementFromReview(active)} />}
+      {active && <ActorDossier application={active} actorApplications={apps.filter((application) => application.actorUid === active.actorUid)} brief={briefs.find((brief) => brief.id === active.briefId)} actor={actors[active.actorUid]} close={() => setActive(null)} working={working === active.id} decide={requestDecision} confirmReplacement={() => void confirmReplacementFromReview(active)} />}
       {bookingApp && (
         <BookingConfirmDialog
           actorName={bookingActor?.stageName || bookingActor?.fullName || "This actor"}
@@ -386,7 +393,7 @@ function statusLabel(status: Status) {
   return "Rejected";
 }
 
-function ActorDossier({ application, brief, actor, close, working, decide, confirmReplacement }: { application: Application; brief?: AgentBrief; actor?: Actor; close: () => void; working: boolean; decide: (app: Application, status: Status) => void; confirmReplacement: () => void }) {
+function ActorDossier({ application, actorApplications, brief, actor, close, working, decide, confirmReplacement }: { application: Application; actorApplications: ReliabilityApplication[]; brief?: AgentBrief; actor?: Actor; close: () => void; working: boolean; decide: (app: Application, status: Status) => void; confirmReplacement: () => void }) {
   const photos = albumCategories.flatMap((category) => (actor?.albums?.[category] ?? []).map((source) => ({ category, source })));
   const [viewer, setViewer] = useState<number | null>(null);
   const [headshotOpen, setHeadshotOpen] = useState(false);
@@ -417,6 +424,9 @@ function ActorDossier({ application, brief, actor, close, working, decide, confi
             <p className="line-clamp-4 text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">{actor?.bio || "No bio added yet."}</p>
             <div className="mt-4 flex flex-wrap gap-2">{[actor?.ageRange, actor?.heightCm && `${actor.heightCm} cm`, actor?.hairColor, actor?.eyeColor, actor?.availabilityStatus].filter(Boolean).map((item) => <span key={item} className="rounded-full bg-brand-ice px-3 py-1.5 text-xs font-bold text-brand-navy sm:text-sm">{item}</span>)}</div>
           </div>
+        </div>
+        <div className="mt-6">
+          <ActorReliabilityPanel applications={actorApplications} compact />
         </div>
         <section className="mt-8">
           <div className="flex items-end justify-between gap-3">

@@ -469,6 +469,8 @@ function ReplacementPool({ brief, applications, senderUid, onDone }: { brief: Ag
   const [actorDetails, setActorDetails] = useState<Record<string, ActorZCardSnapshot>>({});
   const [working, setWorking] = useState("");
   const [error, setError] = useState("");
+  const [deadlineInput, setDeadlineInput] = useState(() => datetimeLocalFromReplacementDeadline(brief.replacementDeadlineAt));
+  const [poolSent, setPoolSent] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -485,20 +487,33 @@ function ReplacementPool({ brief, applications, senderUid, onDone }: { brief: Ag
 
   async function broadcastReplacementAlert() {
     if (!senderUid || !alertableApplications.length) return;
+    const selectedDeadline = deadlineInput ? new Date(deadlineInput) : null;
+    if (!selectedDeadline || Number.isNaN(selectedDeadline.getTime())) {
+      setError("Choose when you need the replacement before alerting the pool.");
+      return;
+    }
     setWorking("broadcast");
     setError("");
+    setPoolSent(false);
     try {
+      const selectedDeadlineLabel = formatReplacementDeadlineDate(selectedDeadline);
+      await updateDoc(doc(db, "briefs", brief.id), {
+        replacementDeadlineAt: selectedDeadline,
+        replacementAlertedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
       await Promise.all(alertableApplications.map((application) => notifyQuietly({
         recipientUid: application.actorUid,
         senderUid,
         type: "replacement_needed",
         title: `Emergency replacement: ${brief.title}`,
-        body: `${brief.agencyName} needs a replacement for ${brief.title}${brief.replacementDeadlineAt ? ` by ${deadlineLabel(brief.replacementDeadlineAt)}` : ""}. Open My Applications and tap “I’m available” if you can make it.`,
+        body: `${brief.agencyName} needs a replacement for ${brief.title} by ${selectedDeadlineLabel}. Open My Applications and tap “I’m available” if you can make it.`,
         href: "/actor/briefs",
         applicationId: application.id,
         briefId: application.briefId,
       })));
-      await updateDoc(doc(db, "briefs", brief.id), { replacementAlertedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      setPoolSent(true);
+      window.setTimeout(() => setPoolSent(false), 5000);
       onDone(`Emergency replacement alert sent to ${alertableApplications.length} applicant${alertableApplications.length === 1 ? "" : "s"}.`);
     } catch {
       setError("We could not send the replacement alert. Please try again.");
@@ -592,16 +607,36 @@ function ReplacementPool({ brief, applications, senderUid, onDone }: { brief: Ag
           <h3 className="mt-1 font-bold text-brand-navy">{brief.replacementOpen ? `1 replacement needed for ${brief.title}` : "Replacement request handled"}</h3>
           <p className="mt-1 text-sm leading-6 text-slate-600">
             {brief.replacementReason ? `Reason: ${brief.replacementReason}. ` : ""}
-            {brief.replacementDeadlineAt ? `Need replacement by ${deadlineLabel(brief.replacementDeadlineAt)}.` : "Emergency response queue is open."}
+            {deadlineInput ? `Need replacement by ${formatReplacementDeadlineDate(new Date(deadlineInput))}.` : "Choose the replacement deadline before alerting the pool."}
           </p>
         </div>
         {brief.replacementOpen && (
-          <button type="button" disabled={working === "broadcast" || !alertableApplications.length} onClick={() => void broadcastReplacementAlert()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-60">
-            {working === "broadcast" ? <LoaderCircle className="size-4 animate-spin" /> : <Radio className="size-4" />}
-            Alert pool
-          </button>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="block">
+              <span className="mb-1 block text-xs font-black uppercase tracking-[0.12em] text-red-700">Needed by</span>
+              <input
+                type="datetime-local"
+                value={deadlineInput}
+                onChange={(event) => {
+                  setDeadlineInput(event.target.value);
+                  setPoolSent(false);
+                }}
+                className="min-h-11 rounded-xl border border-red-200 bg-white px-3 text-sm font-bold text-brand-navy outline-none focus:border-red-400 focus:ring-4 focus:ring-red-100"
+              />
+            </label>
+            <button type="button" disabled={working === "broadcast" || !alertableApplications.length || !deadlineInput} onClick={() => void broadcastReplacementAlert()} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold text-white transition ${poolSent ? "bg-emerald-600 shadow-lg shadow-emerald-100" : "bg-red-600 hover:bg-red-700"} disabled:opacity-60`}>
+              {working === "broadcast" ? <LoaderCircle className="size-4 animate-spin" /> : poolSent ? <CheckCircle2 className="size-4" /> : <Radio className="size-4" />}
+              {working === "broadcast" ? "Sending..." : poolSent ? "Pool sent" : "Alert pool"}
+            </button>
+          </div>
         )}
       </div>
+      {poolSent && (
+        <div className="mt-4 flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-sm font-bold text-emerald-800 shadow-sm animate-pulse">
+          <CheckCircle2 className="size-5 shrink-0" />
+          Pool alert sent to {alertableApplications.length} applicant{alertableApplications.length === 1 ? "" : "s"} for {deadlineInput ? formatReplacementDeadlineDate(new Date(deadlineInput)) : "the selected deadline"}.
+        </div>
+      )}
       <div className="mt-4 flex flex-wrap gap-2">
         <MatchChip label="Age range" value={brief.ageRange || "open"} />
         <MatchChip label="Wardrobe" value={brief.wardrobe ? "brief supplied" : "not specified"} />
@@ -655,9 +690,15 @@ function MatchChip({ label, value }: { label: string; value: string }) {
   );
 }
 
-function deadlineLabel(value: AgentBrief["replacementDeadlineAt"]) {
+function datetimeLocalFromReplacementDeadline(value: AgentBrief["replacementDeadlineAt"]) {
   const date = value?.toDate?.();
-  if (!date) return "the agency deadline";
+  if (!date || Number.isNaN(date.getTime())) return "";
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function formatReplacementDeadlineDate(date: Date) {
+  if (Number.isNaN(date.getTime())) return "the selected deadline";
   return new Intl.DateTimeFormat("en-ZA", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" }).format(date);
 }
 

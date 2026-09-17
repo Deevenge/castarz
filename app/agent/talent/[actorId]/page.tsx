@@ -1,10 +1,11 @@
 "use client";
 
-import { doc, onSnapshot, serverTimestamp, updateDoc } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { Check, LoaderCircle, PlaySquare, X } from "lucide-react";
 import Image from "next/image";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ActorReliabilityPanel, type ReliabilityApplication } from "@/components/ActorReliabilityPanel";
 import { ActorHeroCard, LoadingScreen, PhotoGrid, ProfileTabs, SpecChips } from "@/components/ProfileChrome";
 import { StartChatButton } from "@/components/StartChatButton";
 import { useAuth } from "@/context/AuthContext";
@@ -25,6 +26,7 @@ export default function TalentProfilePage() {
   const [category, setCategory] = useState<(typeof albumCategories)[number]>("Formal");
   const [agencyName, setAgencyName] = useState("CASTARZ Agency");
   const [agencyPhoto, setAgencyPhoto] = useState("");
+  const [actorApplications, setActorApplications] = useState<ReliabilityApplication[]>([]);
 
   useEffect(() => {
     if (!actorId) return;
@@ -49,6 +51,19 @@ export default function TalentProfilePage() {
       setAgencyPhoto(typeof data?.photo === "string" ? data.photo : "");
     });
   }, [user]);
+
+  useEffect(() => {
+    if (!user || !actorId) return;
+    return onSnapshot(query(collection(db, "applications"), where("agencyId", "==", user.uid)), (snapshot) => {
+      setActorApplications(snapshot.docs
+        .map((item) => ({
+          actorUid: String(item.data().actorUid ?? ""),
+          status: String(item.data().status ?? ""),
+          cancelledAtMs: item.data().cancelledAt?.toMillis?.() ?? 0,
+        }))
+        .filter((application) => application.actorUid === actorId));
+    });
+  }, [user, actorId]);
 
   async function decide(next: "approved" | "declined") {
     if (!user || !actorId) return;
@@ -120,6 +135,9 @@ export default function TalentProfilePage() {
           <p className="mt-4 leading-7 text-slate-600">{actor.bio || "This actor has not added a bio yet."}</p>
           <div className="mt-5"><SpecChips actor={actor} /></div>
           {actor.availabilityNote && <p className="mt-4 rounded-2xl bg-brand-ice/70 p-4 text-sm font-semibold text-slate-600">{actor.availabilityNote}</p>}
+          <div className="mt-5">
+            <ActorReliabilityPanel applications={actorApplications} />
+          </div>
           <div className="mt-7 border-t border-brand-silver/70 pt-6">
             <div className="flex items-center justify-between gap-3">
               <div>
