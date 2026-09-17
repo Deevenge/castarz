@@ -4,7 +4,7 @@ import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query,
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { AlertTriangle, CheckCircle2, Clock3, Edit3, Globe2, ImagePlus, LoaderCircle, LockKeyhole, MapPin, MessageCircle, Plus, Radio, Send, ShieldCheck, Trash2, UsersRound, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, Copy, Edit3, ExternalLink, Globe2, ImagePlus, Link2, LoaderCircle, LockKeyhole, MapPin, MessageCircle, Plus, Radio, Send, ShieldCheck, Trash2, UsersRound, X } from "lucide-react";
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from "react";
 import { AgentApplicationsWorkspace } from "@/components/AgentApplicationsWorkspace";
 import { PhotoLightbox } from "@/components/ProfileChrome";
@@ -40,6 +40,15 @@ type Application = {
   replacementAvailableAtMs: number;
 };
 
+type ProductionShortlist = {
+  id: string;
+  briefId: string;
+  selectedActorUids: string[];
+  submittedAtMs: number;
+  expiresAtMs: number;
+  productionName: string;
+};
+
 const blank: BriefForm = {
   title: "",
   production: "",
@@ -71,6 +80,7 @@ export default function BriefsPage() {
   const replacementBriefId = searchParams.get("replacement") ?? "";
   const [briefs, setBriefs] = useState<AgentBrief[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
+  const [productionShortlists, setProductionShortlists] = useState<ProductionShortlist[]>([]);
   const [form, setForm] = useState<BriefForm>(blank);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -99,9 +109,20 @@ export default function BriefsPage() {
         replacementAvailableAtMs: item.data().replacementAvailableAt?.toMillis?.() ?? 0,
       })));
     });
+    const shortlistStop = onSnapshot(query(collection(db, "shortlists"), where("agencyId", "==", user.uid)), (snapshot) => {
+      setProductionShortlists(snapshot.docs.map((item) => ({
+        id: item.id,
+        briefId: String(item.data().briefId ?? ""),
+        selectedActorUids: Array.isArray(item.data().selectedActorUids) ? item.data().selectedActorUids.filter((uid: unknown): uid is string => typeof uid === "string") : [],
+        submittedAtMs: item.data().submittedAt?.toMillis?.() ?? 0,
+        expiresAtMs: item.data().expiresAt?.toMillis?.() ?? 0,
+        productionName: typeof item.data().productionName === "string" ? item.data().productionName : "",
+      })));
+    });
     return () => {
       briefStop();
       applicationStop();
+      shortlistStop();
     };
   }, [user]);
 
@@ -313,6 +334,7 @@ export default function BriefsPage() {
               brief={brief}
               applications={applicationsByBrief[brief.id] ?? []}
               senderUid={user?.uid ?? ""}
+              productionShortlists={productionShortlists.filter((shortlist) => shortlist.briefId === brief.id)}
               focusReplacement={replacementBriefId === brief.id}
               onClose={() => setClosingBrief(brief)}
               onEdit={() => startEditBrief(brief)}
@@ -351,7 +373,7 @@ export default function BriefsPage() {
   );
 }
 
-function BriefCard({ brief, applications, senderUid, focusReplacement, onClose, onEdit, onDelete, onDone }: { brief: AgentBrief; applications: Application[]; senderUid: string; focusReplacement: boolean; onClose: () => void; onEdit: () => void; onDelete: () => void; onDone: (message: string) => void }) {
+function BriefCard({ brief, applications, senderUid, productionShortlists, focusReplacement, onClose, onEdit, onDelete, onDone }: { brief: AgentBrief; applications: Application[]; senderUid: string; productionShortlists: ProductionShortlist[]; focusReplacement: boolean; onClose: () => void; onEdit: () => void; onDelete: () => void; onDone: (message: string) => void }) {
   const appliedCount = applications.length;
   const shortlistedCount = applications.filter((application) => application.status === "standby" || application.status === "selected" || application.status === "booked").length;
   const selectedCount = applications.filter((application) => application.status === "selected" || application.status === "booked").length;
@@ -411,6 +433,7 @@ function BriefCard({ brief, applications, senderUid, focusReplacement, onClose, 
           {brief.whatsappLink && <a href={brief.whatsappLink} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 font-bold text-brand-blue"><MessageCircle className="size-4" />Open WhatsApp group</a>}
         </div>
       )}
+      <ProductionSelectionLink brief={brief} applications={applications} senderUid={senderUid} productionShortlists={productionShortlists} onDone={onDone} />
       <ReplacementPool brief={brief} applications={applications} senderUid={senderUid} onDone={onDone} />
       <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
         <button type="button" onClick={onEdit} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-ice px-4 text-sm font-bold text-brand-navy hover:bg-brand-cyan/20">
@@ -447,6 +470,149 @@ function zCardSnapshotFromActor(actor: ActorProfile): ActorZCardSnapshot {
     credits: actor.credits.slice(0, 8),
     albums: actor.albums,
   };
+}
+
+function ProductionSelectionLink({ brief, applications, senderUid, productionShortlists, onDone }: { brief: AgentBrief; applications: Application[]; senderUid: string; productionShortlists: ProductionShortlist[]; onDone: (message: string) => void }) {
+  const eligible = useMemo(() => applications.filter((application) => application.status === "standby" || application.status === "selected" || application.status === "booked"), [applications]);
+  const eligibleKey = eligible.map((application) => application.id).join("|");
+  const latestShortlist = productionShortlists.slice().sort((left, right) => (right.submittedAtMs || right.expiresAtMs) - (left.submittedAtMs || left.expiresAtMs))[0];
+  const [actorDetails, setActorDetails] = useState<Record<string, ActorZCardSnapshot>>({});
+  const [working, setWorking] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState("");
+  const [nowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    let active = true;
+    void Promise.all(eligible.map(async (application) => {
+      const snapshot = await getDoc(doc(db, "actors", application.actorUid));
+      return [application.actorUid, zCardSnapshotFromActor(normalizeActorProfile(snapshot.data()))] as const;
+    })).then((entries) => {
+      if (active) setActorDetails(Object.fromEntries(entries));
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [eligible, eligibleKey]);
+
+  if (!eligible.length && !latestShortlist) return null;
+
+  const link = latestShortlist && typeof window !== "undefined" ? `${window.location.origin}/share/${latestShortlist.id}` : "";
+  const submittedNames = latestShortlist?.selectedActorUids.map((uid) => actorDetails[uid]?.name || uid) ?? [];
+  const expired = Boolean(latestShortlist?.expiresAtMs && latestShortlist.expiresAtMs < nowMs && !latestShortlist.submittedAtMs);
+
+  async function createProductionLink() {
+    if (!senderUid || !eligible.length) return;
+    setWorking(true);
+    setError("");
+    setCopied(false);
+    try {
+      const publicActors = eligible.map((application) => {
+        const actor = actorDetails[application.actorUid];
+        return {
+          uid: application.actorUid,
+          fullName: actor?.name || "Actor",
+          stageName: actor?.name || "Actor",
+          headshot: actor?.photo || "",
+          bio: actor?.bio || "",
+          heightCm: actor?.heightCm || "",
+          hairColor: actor?.hairColor || "",
+          eyeColor: actor?.eyeColor || "",
+          ageRange: actor?.ageRange || "",
+          applicationId: application.id,
+        };
+      });
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const created = await addDoc(collection(db, "shortlists"), {
+        agencyId: senderUid,
+        briefId: brief.id,
+        briefTitle: brief.title,
+        production: brief.production,
+        location: brief.location,
+        shootDate: briefDateLabel(brief),
+        publicActors,
+        selectedActorUids: [],
+        productionName: "",
+        productionNote: "",
+        expiresAt,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      const shareUrl = `${window.location.origin}/share/${created.id}`;
+      await navigator.clipboard?.writeText(shareUrl);
+      setCopied(true);
+      onDone("Production one-time selection link created and copied.");
+    } catch (createError) {
+      console.error("Unable to create production selection link.", createError);
+      setError("We could not create the production link. Please try again.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function copyLink() {
+    if (!link) return;
+    await navigator.clipboard?.writeText(link);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 3000);
+  }
+
+  return (
+    <section className="mt-5 rounded-2xl border border-brand-silver/70 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-brand-blue"><Link2 className="size-4" />Production selection link</p>
+          <h3 className="mt-1 font-bold text-brand-navy">One-time client review</h3>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">Share a polished guest page with production so they can choose preferred actors once. No login needed.</p>
+        </div>
+        <button type="button" disabled={working || !eligible.length} onClick={() => void createProductionLink()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-navy px-4 text-sm font-bold text-white hover:bg-brand-blue disabled:opacity-60">
+          {working ? <LoaderCircle className="size-4 animate-spin" /> : <Link2 className="size-4" />}
+          {latestShortlist ? "Create fresh link" : "Create link"}
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto]">
+        <div className="rounded-xl bg-brand-ice/70 p-3">
+          <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">{eligible.length} actor{eligible.length === 1 ? "" : "s"} in production shortlist</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {eligible.slice(0, 6).map((application) => <span key={application.id} className="rounded-full bg-white px-3 py-1 text-xs font-bold text-brand-navy">{actorDetails[application.actorUid]?.name || "Loading actor"}</span>)}
+            {eligible.length > 6 && <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-500">+{eligible.length - 6} more</span>}
+          </div>
+        </div>
+        {latestShortlist && (
+          <div className={`rounded-xl px-4 py-3 text-sm font-bold ${latestShortlist.submittedAtMs ? "bg-emerald-50 text-emerald-800" : expired ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800"}`}>
+            {latestShortlist.submittedAtMs ? "Production submitted" : expired ? "Link expired" : "Awaiting production"}
+          </div>
+        )}
+      </div>
+
+      {latestShortlist && (
+        <div className="mt-4 rounded-2xl border border-brand-silver/70 bg-brand-ice/40 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-brand-navy">{link}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">Expires {latestShortlist.expiresAtMs ? new Intl.DateTimeFormat("en-ZA", { dateStyle: "medium", timeStyle: "short" }).format(new Date(latestShortlist.expiresAtMs)) : "in 7 days"}.</p>
+            </div>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => void copyLink()} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-white px-3 text-sm font-bold text-brand-navy ring-1 ring-brand-silver/70 hover:bg-brand-ice">
+                <Copy className="size-4" />{copied ? "Copied" : "Copy"}
+              </button>
+              <a href={link} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-brand-blue px-3 text-sm font-bold text-white hover:bg-brand-navy">
+                <ExternalLink className="size-4" />Open
+              </a>
+            </div>
+          </div>
+          {latestShortlist.submittedAtMs && (
+            <div className="mt-4 rounded-xl bg-white p-3">
+              <p className="text-xs font-black uppercase tracking-[0.12em] text-emerald-700">Production preferred</p>
+              <p className="mt-2 font-bold text-brand-navy">{submittedNames.length ? submittedNames.join(", ") : "No actors selected"}</p>
+              {latestShortlist.productionName && <p className="mt-1 text-sm font-semibold text-slate-500">Submitted by {latestShortlist.productionName}</p>}
+            </div>
+          )}
+        </div>
+      )}
+      {copied && !latestShortlist && <p className="mt-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">Production link copied.</p>}
+      {error && <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</p>}
+    </section>
+  );
 }
 
 function ReplacementPool({ brief, applications, senderUid, onDone }: { brief: AgentBrief; applications: Application[]; senderUid: string; onDone: (message: string) => void }) {

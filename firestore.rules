@@ -268,10 +268,33 @@ service cloud.firestore {
 
     // Production guest links: anyone with the ID can view that shortlist only.
     match /shortlists/{shortlistId} {
+      function ownsShortlist() {
+        return isAgent() && resource.data.agencyId == request.auth.uid;
+      }
+      function validGuestSelection() {
+        return request.auth == null
+          && !resource.data.keys().hasAny(['submittedAt'])
+          && (!resource.data.keys().hasAny(['expiresAt']) || request.time < resource.data.expiresAt)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'selectedActorUids',
+            'productionName',
+            'productionNote',
+            'submittedAt',
+            'updatedAt'
+          ])
+          && request.resource.data.selectedActorUids is list
+          && request.resource.data.selectedActorUids.size() <= resource.data.publicActors.size()
+          && request.resource.data.productionName is string
+          && request.resource.data.productionName.size() <= 120
+          && request.resource.data.productionNote is string
+          && request.resource.data.productionNote.size() <= 500
+          && request.resource.data.submittedAt == request.time;
+      }
       allow get: if true;
-      allow list: if isAgent() && resource.data.agencyId == request.auth.uid;
+      allow list: if ownsShortlist();
       allow create: if isAgent() && request.resource.data.agencyId == request.auth.uid;
-      allow update, delete: if isAgent() && resource.data.agencyId == request.auth.uid;
+      allow update: if ownsShortlist() || validGuestSelection();
+      allow delete: if ownsShortlist();
     }
 
     match /bookings/{bookingId} {
